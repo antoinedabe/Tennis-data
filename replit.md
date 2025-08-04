@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a Tennis Match Analyzer web application that combines Python backend data analysis with a modern HTML/CSS frontend. The application analyzes point-by-point tennis match data from GitHub datasets and displays comprehensive statistics through an interactive web interface. It demonstrates full-stack development using Python's HTTP server, data processing with CSV/requests libraries, and responsive web design.
+This is a Tennis Match Analyzer web application that combines Python backend data analysis with a modern HTML/CSS frontend. The application loads a list of individual tennis matches from GitHub datasets, allows users to select specific matches, and displays comprehensive point-by-point statistics through an interactive web interface. It demonstrates full-stack development using Python's HTTP server, data processing with CSV/requests libraries, and responsive web design with match selection functionality.
 
 ## User Preferences
 
@@ -13,13 +13,15 @@ Preferred communication style: Simple, everyday language.
 ### Backend Architecture
 - **Python HTTP Server**: Custom web server using BaseHTTPRequestHandler for routing and data serving
 - **Data Analysis Engine**: TennisAnalyzer class that fetches and processes CSV tennis match data
-- **API Endpoints**: RESTful endpoints for serving HTML interface and JSON analysis results
+- **API Endpoints**: RESTful endpoints for match list (`/matches`) and individual match analysis (`/analyze/{id}`)
+- **Match Selection System**: Users can browse and select from 50 available ATP matches with player names, scores, and tournament details
 - **Real-time Processing**: Fetches live data from GitHub tennis datasets on demand
 
 ### Frontend Architecture
 - **Single-page application**: Modern HTML5/CSS3/JavaScript interface with embedded styling
 - **Responsive design**: Mobile-first approach with CSS Grid and Flexbox layouts
-- **Interactive dashboard**: Real-time statistics display with player comparisons and match summaries
+- **Match Browser**: Scrollable list of available matches with player names, dates, scores, and winners
+- **Interactive dashboard**: Real-time statistics display with individual match details and player comparisons
 - **Asynchronous requests**: JavaScript fetch API for seamless data retrieval without page refresh
 
 ### Data Processing Pipeline
