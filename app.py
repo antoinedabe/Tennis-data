@@ -1025,9 +1025,9 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 gameDetails.innerHTML = `
                     <h4>Game ${data.game_number} Details</h4>
                     <p><strong>Server:</strong> ${serverName}</p>
-                    <p><strong>Total Points:</strong> ${data.points.length}</p>
-                    <p><strong>Aces:</strong> ${data.aces.player1 + data.aces.player2}</p>
-                    <p><strong>Double Faults:</strong> ${data.double_faults.player1 + data.double_faults.player2}</p>
+                    <p><strong>Points in this Game:</strong> ${data.points.length}</p>
+                    <p><strong>Aces in this Game:</strong> ${data.aces.player1 + data.aces.player2}</p>
+                    <p><strong>Double Faults in this Game:</strong> ${data.double_faults.player1 + data.double_faults.player2}</p>
                     <p><strong>Average Rally Length:</strong> ${data.rally_lengths.length > 0 ? (data.rally_lengths.reduce((a, b) => a + b, 0) / data.rally_lengths.length).toFixed(1) : 0}</p>
                 `;
                 gameDetails.style.display = 'block';
