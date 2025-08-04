@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a Tennis Match Analyzer web application that combines Python backend data analysis with a modern HTML/CSS frontend. The application loads a list of individual tennis matches from GitHub datasets, allows users to select specific matches, and displays comprehensive point-by-point statistics through an interactive web interface. It demonstrates full-stack development using Python's HTTP server, data processing with CSV/requests libraries, and responsive web design with match selection functionality.
+This is a comprehensive Tennis Match Analyzer web application that combines Python backend data analysis with a modern HTML/CSS frontend. The application provides three levels of analysis: (1) browseable list of tennis matches, (2) detailed match statistics with game breakdown, and (3) point-by-point analysis of individual games showing every shot and outcome. Users can drill down from match selection to specific game analysis with complete shot-by-shot breakdowns. It demonstrates advanced full-stack development using Python's HTTP server, complex data processing, and interactive web design.
 
 ## User Preferences
 
@@ -13,15 +13,18 @@ Preferred communication style: Simple, everyday language.
 ### Backend Architecture
 - **Python HTTP Server**: Custom web server using BaseHTTPRequestHandler for routing and data serving
 - **Data Analysis Engine**: TennisAnalyzer class that fetches and processes CSV tennis match data
-- **API Endpoints**: RESTful endpoints for match list (`/matches`) and individual match analysis (`/analyze/{id}`)
-- **Match Selection System**: Users can browse and select from 50 available ATP matches with player names, scores, and tournament details
+- **API Endpoints**: RESTful endpoints for match list (`/matches`), match analysis (`/analyze/{id}`), and game analysis (`/analyze/{match_id}/{game_id}`)
+- **Multi-level Analysis System**: Users can browse matches, analyze match statistics, then drill down to specific games with point-by-point shot analysis
+- **Game Selection System**: Interactive grid showing all games in a match with server information and point counts
 - **Real-time Processing**: Fetches live data from GitHub tennis datasets on demand
 
 ### Frontend Architecture
 - **Single-page application**: Modern HTML5/CSS3/JavaScript interface with embedded styling
 - **Responsive design**: Mobile-first approach with CSS Grid and Flexbox layouts
 - **Match Browser**: Scrollable list of available matches with player names, dates, scores, and winners
-- **Interactive dashboard**: Real-time statistics display with individual match details and player comparisons
+- **Game Grid Interface**: Visual grid of games within each match showing server and point count information
+- **Point-by-Point Analysis**: Detailed breakdown of every shot in a game with color-coded player actions and outcomes
+- **Interactive dashboard**: Multi-level statistics display from match overview to individual point analysis
 - **Asynchronous requests**: JavaScript fetch API for seamless data retrieval without page refresh
 
 ### Data Processing Pipeline

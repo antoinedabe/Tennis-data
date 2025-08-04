@@ -48,7 +48,7 @@ class TennisAnalyzer:
         return matches
     
     def analyze_single_match(self, data, match_id):
-        """Analyze a specific tennis match by ID"""
+        """Analyze a specific tennis match by ID with game-by-game breakdown"""
         if not data:
             return None
             
@@ -72,6 +72,7 @@ class TennisAnalyzer:
             'errors': {'player1': 0, 'player2': 0},
             'double_faults': {'player1': 0, 'player2': 0},
             'rally_lengths': [],
+            'games': [],  # Game-by-game breakdown
             'match_info': {
                 'date': target_match.get('date', 'Unknown'),
                 'tournament': target_match.get('tny_name', 'Unknown Tournament'),
@@ -89,44 +90,103 @@ class TennisAnalyzer:
         
         # Split by games (semicolon separated)
         games = pbp_sequence.split(';')
-        total_games = len([g for g in games if g])
         
         # Analyze each game
-        for game in games:
+        for game_idx, game in enumerate(games):
             if not game:
                 continue
                 
-            # Each character represents a shot/outcome
+            game_stats = {
+                'game_number': game_idx + 1,
+                'server': 1 if game_idx % 2 == 0 else 2,  # Alternate server
+                'points': [],
+                'aces': {'player1': 0, 'player2': 0},
+                'double_faults': {'player1': 0, 'player2': 0},
+                'errors': {'player1': 0, 'player2': 0},
+                'rally_lengths': []
+            }
+            
+            # Parse each point in the game
+            current_point = []
             rally_length = 0
             server_position = 1  # Start with player1 serving
             
             for shot in game:
                 if shot in 'SR':  # S=serve, R=return
+                    current_point.append({
+                        'shot': shot,
+                        'player': server_position if shot == 'S' else (2 if server_position == 1 else 1),
+                        'description': 'Serve' if shot == 'S' else 'Return'
+                    })
                     rally_length += 1
                 elif shot == 'A':  # Ace
+                    current_point.append({
+                        'shot': shot,
+                        'player': server_position,
+                        'description': 'Ace',
+                        'point_end': True,
+                        'winner': server_position
+                    })
                     if server_position == 1:
+                        game_stats['aces']['player1'] += 1
                         stats['aces']['player1'] += 1
                     else:
+                        game_stats['aces']['player2'] += 1
                         stats['aces']['player2'] += 1
                     rally_length = 1
                 elif shot == 'D':  # Double fault
+                    current_point.append({
+                        'shot': shot,
+                        'player': server_position,
+                        'description': 'Double Fault',
+                        'point_end': True,
+                        'winner': 2 if server_position == 1 else 1
+                    })
                     if server_position == 1:
+                        game_stats['double_faults']['player1'] += 1
+                        game_stats['errors']['player1'] += 1
                         stats['double_faults']['player1'] += 1
                         stats['errors']['player1'] += 1
                     else:
+                        game_stats['double_faults']['player2'] += 1
+                        game_stats['errors']['player2'] += 1
                         stats['double_faults']['player2'] += 1
                         stats['errors']['player2'] += 1
                     rally_length = 1
                 elif shot in '.':  # End of point
-                    if rally_length > 0:
-                        stats['rally_lengths'].append(rally_length)
+                    if current_point:
+                        game_stats['points'].append({
+                            'point_number': len(game_stats['points']) + 1,
+                            'rally_length': rally_length,
+                            'shots': current_point.copy()
+                        })
+                        if rally_length > 0:
+                            game_stats['rally_lengths'].append(rally_length)
+                            stats['rally_lengths'].append(rally_length)
+                    current_point = []
                     rally_length = 0
                     # Switch server for next point
                     server_position = 2 if server_position == 1 else 1
+                else:
+                    # Other shots (winners, errors, etc.)
+                    current_point.append({
+                        'shot': shot,
+                        'player': server_position if len(current_point) % 2 == 0 else (2 if server_position == 1 else 1),
+                        'description': self._get_shot_description(shot)
+                    })
+                    rally_length += 1
             
             # Handle end of game
-            if rally_length > 0:
+            if current_point and rally_length > 0:
+                game_stats['points'].append({
+                    'point_number': len(game_stats['points']) + 1,
+                    'rally_length': rally_length,
+                    'shots': current_point.copy()
+                })
+                game_stats['rally_lengths'].append(rally_length)
                 stats['rally_lengths'].append(rally_length)
+            
+            stats['games'].append(game_stats)
         
         # Calculate summary statistics
         total_aces = stats['aces']['player1'] + stats['aces']['player2']
@@ -137,12 +197,29 @@ class TennisAnalyzer:
             'total_aces': total_aces,
             'total_errors': total_errors,
             'total_double_faults': total_double_faults,
-            'total_games': total_games,
+            'total_games': len(stats['games']),
             'avg_rally_length': sum(stats['rally_lengths']) / len(stats['rally_lengths']) if stats['rally_lengths'] else 0,
             'total_rallies': len(stats['rally_lengths'])
         }
         
         return stats
+    
+    def _get_shot_description(self, shot):
+        """Get description for shot codes"""
+        shot_map = {
+            'A': 'Ace',
+            'D': 'Double Fault',
+            'S': 'Serve',
+            'R': 'Return',
+            'W': 'Winner',
+            'E': 'Error',
+            'F': 'Forehand',
+            'B': 'Backhand',
+            'V': 'Volley',
+            'O': 'Overhead',
+            'L': 'Lob'
+        }
+        return shot_map.get(shot, f'Shot ({shot})')
 
 class TennisWebHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -154,6 +231,15 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             self.serve_html()
         elif self.path == '/matches':
             self.serve_match_list()
+        elif self.path.startswith('/analyze/') and '/' in self.path[9:]:
+            # Format: /analyze/{match_id}/{game_id}
+            parts = self.path.split('/')
+            try:
+                match_id = int(parts[2])
+                game_id = int(parts[3])
+                self.serve_game_analysis(match_id, game_id)
+            except (ValueError, IndexError):
+                self.send_error(400)
         elif self.path.startswith('/analyze/'):
             match_id = self.path.split('/')[-1]
             try:
@@ -379,6 +465,121 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             font-weight: bold;
         }
 
+        .games-section {
+            margin-top: 30px;
+        }
+
+        .games-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .game-item {
+            background: #f8f9fa;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .game-item:hover {
+            background: #e9ecef;
+            border-color: #667eea;
+            transform: translateY(-2px);
+        }
+
+        .game-number {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .game-server {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .game-details {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .points-section {
+            margin-top: 20px;
+        }
+
+        .points-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .point-item {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            background: white;
+        }
+
+        .point-item:last-child {
+            border-bottom: none;
+        }
+
+        .point-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .point-number {
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .rally-length {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .shots-sequence {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .shot-item {
+            background: #e9ecef;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #333;
+        }
+
+        .shot-item.player1 {
+            background: #d4edda;
+            border-left: 3px solid #4CAF50;
+        }
+
+        .shot-item.player2 {
+            background: #f8d7da;
+            border-left: 3px solid #FF9800;
+        }
+
+        .shot-item.point-end {
+            background: #fff3cd;
+            border-left: 3px solid #FFC107;
+            font-weight: bold;
+        }
+
         @media (max-width: 768px) {
             .player-comparison {
                 grid-template-columns: 1fr;
@@ -391,6 +592,14 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             .match-header {
                 flex-direction: column;
                 align-items: flex-start;
+            }
+
+            .games-container {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+
+            .shots-sequence {
+                flex-direction: column;
             }
         }
     </style>
@@ -458,6 +667,30 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                         <p>Aces: <strong id="p2-aces">-</strong></p>
                         <p>Double Faults: <strong id="p2-double-faults">-</strong></p>
                         <p>Errors: <strong id="p2-errors">-</strong></p>
+                    </div>
+                </div>
+
+                <div id="games-section" class="games-section" style="display: none;">
+                    <h3 style="margin-top: 30px; text-align: center;">Games in This Match</h3>
+                    <p style="text-align: center; color: #666; margin-bottom: 20px;">
+                        Click on any game to see point-by-point analysis
+                    </p>
+                    <div id="games-container" class="games-container">
+                        <!-- Games will be displayed here -->
+                    </div>
+                </div>
+            </div>
+
+            <div id="game-results" class="results">
+                <h2 id="game-title">Game Analysis</h2>
+                <div id="game-details" class="game-details">
+                    <!-- Game details will be displayed here -->
+                </div>
+                
+                <div id="points-section" class="points-section">
+                    <h3>Point-by-Point Breakdown</h3>
+                    <div id="points-container" class="points-container">
+                        <!-- Points will be displayed here -->
                     </div>
                 </div>
             </div>
@@ -534,13 +767,17 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             });
         }
 
+        let currentMatchData = null;
+
         async function analyzeMatch(matchId) {
             const results = document.getElementById('results');
+            const gameResults = document.getElementById('game-results');
             const loading = document.getElementById('loading');
             const error = document.getElementById('error');
 
             // Reset UI
             results.style.display = 'none';
+            gameResults.style.display = 'none';
             error.style.display = 'none';
             loading.style.display = 'block';
 
@@ -551,6 +788,9 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 if (data.error) {
                     throw new Error(data.error);
                 }
+
+                currentMatchData = data;
+                currentMatchData.matchId = matchId;
 
                 // Update match details
                 const matchInfo = data.match_info;
@@ -588,6 +828,10 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 document.getElementById('p2-double-faults').textContent = data.double_faults.player2;
                 document.getElementById('p2-errors').textContent = data.errors.player2;
 
+                // Display games
+                displayGames(data.games);
+                document.getElementById('games-section').style.display = 'block';
+
                 results.style.display = 'block';
 
             } catch (err) {
@@ -596,6 +840,107 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             } finally {
                 loading.style.display = 'none';
             }
+        }
+
+        function displayGames(games) {
+            const container = document.getElementById('games-container');
+            container.innerHTML = '';
+
+            games.forEach((game, index) => {
+                const gameDiv = document.createElement('div');
+                gameDiv.className = 'game-item';
+                gameDiv.onclick = () => analyzeGame(currentMatchData.matchId, index);
+
+                const serverName = game.server === 1 ? currentMatchData.match_info.player1 : currentMatchData.match_info.player2;
+
+                gameDiv.innerHTML = `
+                    <div class="game-number">Game ${game.game_number}</div>
+                    <div class="game-server">Server: ${serverName}</div>
+                    <div class="game-server">${game.points.length} points</div>
+                `;
+
+                container.appendChild(gameDiv);
+            });
+        }
+
+        async function analyzeGame(matchId, gameId) {
+            const gameResults = document.getElementById('game-results');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+
+            // Reset UI
+            gameResults.style.display = 'none';
+            error.style.display = 'none';
+            loading.style.display = 'block';
+
+            try {
+                const response = await fetch(`/analyze/${matchId}/${gameId}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Update game details
+                const matchInfo = data.match_info;
+                const serverName = data.server === 1 ? matchInfo.player1 : matchInfo.player2;
+
+                document.getElementById('game-title').textContent = 
+                    `Game ${data.game_number} - ${matchInfo.player1} vs ${matchInfo.player2}`;
+                
+                const gameDetails = document.getElementById('game-details');
+                gameDetails.innerHTML = `
+                    <h4>Game ${data.game_number} Details</h4>
+                    <p><strong>Server:</strong> ${serverName}</p>
+                    <p><strong>Total Points:</strong> ${data.points.length}</p>
+                    <p><strong>Aces:</strong> ${data.aces.player1 + data.aces.player2}</p>
+                    <p><strong>Double Faults:</strong> ${data.double_faults.player1 + data.double_faults.player2}</p>
+                    <p><strong>Average Rally Length:</strong> ${data.rally_lengths.length > 0 ? (data.rally_lengths.reduce((a, b) => a + b, 0) / data.rally_lengths.length).toFixed(1) : 0}</p>
+                `;
+                gameDetails.style.display = 'block';
+
+                // Display points
+                displayPoints(data.points, matchInfo);
+
+                gameResults.style.display = 'block';
+
+            } catch (err) {
+                error.textContent = 'Error analyzing game: ' + err.message;
+                error.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function displayPoints(points, matchInfo) {
+            const container = document.getElementById('points-container');
+            container.innerHTML = '';
+
+            points.forEach(point => {
+                const pointDiv = document.createElement('div');
+                pointDiv.className = 'point-item';
+
+                pointDiv.innerHTML = `
+                    <div class="point-header">
+                        <span class="point-number">Point ${point.point_number}</span>
+                        <span class="rally-length">Rally Length: ${point.rally_length} shots</span>
+                    </div>
+                    <div class="shots-sequence">
+                        ${point.shots.map(shot => {
+                            const playerName = shot.player === 1 ? matchInfo.player1 : matchInfo.player2;
+                            const classes = ['shot-item', `player${shot.player}`];
+                            if (shot.point_end) classes.push('point-end');
+                            
+                            return `<span class="${classes.join(' ')}" title="${playerName}">
+                                ${shot.description}
+                                ${shot.point_end ? ` (Winner: ${shot.winner === 1 ? matchInfo.player1 : matchInfo.player2})` : ''}
+                            </span>`;
+                        }).join('')}
+                    </div>
+                `;
+
+                container.appendChild(pointDiv);
+            });
         }
     </script>
 </body>
@@ -644,6 +989,27 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 self.send_error_json("Failed to fetch match data")
         except Exception as e:
             self.send_error_json(f"Analysis error: {str(e)}")
+    
+    def serve_game_analysis(self, match_id, game_id):
+        url = "https://raw.githubusercontent.com/JeffSackmann/tennis_pointbypoint/master/pbp_matches_atp_main_current.csv"
+        
+        try:
+            data = self.analyzer.fetch_tennis_data(url)
+            if data:
+                stats = self.analyzer.analyze_single_match(data, match_id)
+                if stats and len(stats['games']) > game_id:
+                    game_data = stats['games'][game_id]
+                    game_data['match_info'] = stats['match_info']
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(game_data).encode())
+                else:
+                    self.send_error_json("Game not found")
+            else:
+                self.send_error_json("Failed to fetch match data")
+        except Exception as e:
+            self.send_error_json(f"Game analysis error: {str(e)}")
     
     def send_error_json(self, message):
         self.send_response(500)
