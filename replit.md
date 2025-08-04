@@ -22,6 +22,7 @@ Preferred communication style: Simple, everyday language.
 - **Single-page application**: Modern HTML5/CSS3/JavaScript interface with embedded styling
 - **Responsive design**: Mobile-first approach with CSS Grid and Flexbox layouts
 - **Match Browser**: Scrollable list of available matches with player names, dates, scores, and winners
+- **Year Filter**: Dropdown filter to browse matches by specific years (2017, etc.) with match count display
 - **Game Grid Interface**: Visual grid of games within each match showing server and point count information
 - **Point-by-Point Analysis**: Detailed breakdown of every shot in a game with color-coded player actions and outcomes
 - **Interactive dashboard**: Multi-level statistics display from match overview to individual point analysis

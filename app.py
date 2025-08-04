@@ -713,6 +713,46 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             color: #495057;
         }
 
+        .matches-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .filter-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .filter-section label {
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        #year-filter {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        #year-filter:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .match-count {
+            color: #666;
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+
         @media (max-width: 768px) {
             .player-comparison {
                 grid-template-columns: 1fr;
@@ -755,7 +795,16 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 </button>
                 
                 <div id="matches-list" class="matches-list" style="display: none;">
-                    <h3>Select a Match to Analyze:</h3>
+                    <div class="matches-header">
+                        <h3>Select a Match to Analyze:</h3>
+                        <div class="filter-section">
+                            <label for="year-filter">Filter by Year:</label>
+                            <select id="year-filter" onchange="filterMatchesByYear()">
+                                <option value="all">All Years</option>
+                            </select>
+                            <span id="match-count" class="match-count"></span>
+                        </div>
+                    </div>
                     <div id="matches-container" class="matches-container">
                         <!-- Matches will be loaded here -->
                     </div>
@@ -838,6 +887,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
 
     <script>
         let matchesData = [];
+        let allYears = [];
 
         async function loadMatches() {
             const button = document.getElementById('load-matches-btn');
@@ -860,6 +910,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 }
 
                 matchesData = data;
+                setupYearFilter(data);
                 displayMatches(data);
                 matchesList.style.display = 'block';
 
@@ -871,6 +922,67 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 button.disabled = false;
                 button.textContent = 'Refresh Matches';
             }
+        }
+
+        function setupYearFilter(matches) {
+            // Extract unique years from matches
+            const years = new Set();
+            matches.forEach(match => {
+                // Extract year from date format "DD MMM YY"
+                const dateParts = match.date.split(' ');
+                if (dateParts.length >= 3) {
+                    let year = dateParts[2];
+                    // Convert 2-digit year to 4-digit (assuming 2000s)
+                    if (year.length === 2) {
+                        year = '20' + year;
+                    }
+                    years.add(year);
+                }
+            });
+
+            allYears = Array.from(years).sort().reverse(); // Most recent years first
+            
+            const yearFilter = document.getElementById('year-filter');
+            // Clear existing options except "All Years"
+            yearFilter.innerHTML = '<option value="all">All Years</option>';
+            
+            // Add year options
+            allYears.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                yearFilter.appendChild(option);
+            });
+
+            updateMatchCount(matches.length);
+        }
+
+        function filterMatchesByYear() {
+            const selectedYear = document.getElementById('year-filter').value;
+            
+            if (selectedYear === 'all') {
+                displayMatches(matchesData);
+                updateMatchCount(matchesData.length);
+            } else {
+                const filteredMatches = matchesData.filter(match => {
+                    const dateParts = match.date.split(' ');
+                    if (dateParts.length >= 3) {
+                        let year = dateParts[2];
+                        if (year.length === 2) {
+                            year = '20' + year;
+                        }
+                        return year === selectedYear;
+                    }
+                    return false;
+                });
+                displayMatches(filteredMatches);
+                updateMatchCount(filteredMatches.length);
+            }
+        }
+
+        function updateMatchCount(count) {
+            const matchCount = document.getElementById('match-count');
+            matchCount.textContent = `(${count} matches)`;
         }
 
         function displayMatches(matches) {
