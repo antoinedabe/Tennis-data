@@ -4,12 +4,15 @@ from io import StringIO
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import urllib.parse
+import re
+
 
 class TennisAnalyzer:
+
     def __init__(self):
         self.match_data = []
         self.analysis_results = {}
-        
+
     def fetch_tennis_data(self, url):
         """Fetch tennis match data from the provided URL"""
         try:
@@ -19,86 +22,112 @@ class TennisAnalyzer:
         except requests.RequestException as e:
             print(f"Error fetching data: {e}")
             return None
-    
+
     def get_all_dataset_urls(self):
         """Get URLs for all available tennis datasets"""
         base_url = "https://raw.githubusercontent.com/JeffSackmann/tennis_pointbypoint/master/"
         slam_base_url = "https://raw.githubusercontent.com/JeffSackmann/tennis_slam_pointbypoint/master/"
-        
+
         datasets = {
-            "ATP Main Draw (Current)": base_url + "pbp_matches_atp_main_current.csv",
-            "ATP Qualifying (Current)": base_url + "pbp_matches_atp_qual_current.csv", 
-            "ATP Challenger Main": base_url + "pbp_matches_ch_main_current.csv",
+            "ATP Main Draw (Current)":
+            base_url + "pbp_matches_atp_main_current.csv",
+            "ATP Qualifying (Current)":
+            base_url + "pbp_matches_atp_qual_current.csv",
+            "ATP Challenger Main":
+            base_url + "pbp_matches_ch_main_current.csv",
             "ITF Futures Main": base_url + "pbp_matches_fu_main_current.csv",
-            "ATP Main Draw (Archive)": base_url + "pbp_matches_atp_main_archive.csv",
-            "ATP Qualifying (Archive)": base_url + "pbp_matches_atp_qual_archive.csv",
-            "ATP Challenger (Archive)": base_url + "pbp_matches_ch_main_archive.csv",
-            "ITF Futures (Archive)": base_url + "pbp_matches_fu_main_archive.csv"
+            "ATP Main Draw (Archive)":
+            base_url + "pbp_matches_atp_main_archive.csv",
+            "ATP Qualifying (Archive)":
+            base_url + "pbp_matches_atp_qual_archive.csv",
+            "ATP Challenger (Archive)":
+            base_url + "pbp_matches_ch_main_archive.csv",
+            "ITF Futures (Archive)":
+            base_url + "pbp_matches_fu_main_archive.csv"
         }
-        
+
         # Add Grand Slam datasets for recent years
-        grand_slam_years = ["2022", "2021", "2020", "2019", "2018"]
-        grand_slams = ["australian-open", "french-open", "wimbledon", "us-open"]
-        
+        grand_slam_years = ["2021"]
+        grand_slams = {
+            "ausopen": "Australian Open",
+            "rolandgarros": "French Open",
+            "wimbledon": "Wimbledon",
+            "usopen": "US Open"
+        }
+
         for year in grand_slam_years:
-            for slam in grand_slams:
-                dataset_name = f"{slam.replace('-', ' ').title()} {year}"
-                datasets[dataset_name] = f"{slam_base_url}{year}-{slam}-matches.csv"
-        
+            for slug, label in grand_slams.items():
+                dataset_name = f"{label} {year}"
+                datasets[
+                    dataset_name] = f"{slam_base_url}{year}-{slug}-matches.csv"
+
         return datasets
-    
+
     def fetch_all_tennis_data(self, selected_datasets=None):
         """Fetch data from multiple tennis datasets"""
         all_datasets = self.get_all_dataset_urls()
-        
+
         if selected_datasets:
             # Filter to only selected datasets
-            datasets_to_fetch = {k: v for k, v in all_datasets.items() if k in selected_datasets}
+            datasets_to_fetch = {
+                k: v
+                for k, v in all_datasets.items() if k in selected_datasets
+            }
         else:
             # Use primary datasets by default
             datasets_to_fetch = {
-                "ATP Main Draw (Current)": all_datasets["ATP Main Draw (Current)"],
-                "ATP Main Draw (Archive)": all_datasets["ATP Main Draw (Archive)"],
-                "Australian Open 2022": all_datasets.get("Australian Open 2022", ""),
-                "French Open 2022": all_datasets.get("French Open 2022", ""),
-                "Wimbledon 2022": all_datasets.get("Wimbledon 2022", ""),
-                "Us Open 2022": all_datasets.get("Us Open 2022", "")
+                "ATP Main Draw (Current)":
+                all_datasets["ATP Main Draw (Current)"],
+                "ATP Main Draw (Archive)":
+                all_datasets["ATP Main Draw (Archive)"],
+                "Australian Open 2022":
+                all_datasets.get("Australian Open 2022", ""),
+                "French Open 2022":
+                all_datasets.get("French Open 2022", ""),
+                "Wimbledon 2022":
+                all_datasets.get("Wimbledon 2022", ""),
+                "Us Open 2022":
+                all_datasets.get("Us Open 2022", "")
             }
-        
+
         combined_data = []
         successful_datasets = []
-        
+
         for dataset_name, url in datasets_to_fetch.items():
             if not url:
                 continue
-                
+
             print(f"Fetching {dataset_name}...")
             data = self.fetch_tennis_data(url)
-            
+
             if data:
                 # Parse the CSV data
                 try:
                     f = StringIO(data)
                     reader = csv.DictReader(f)
                     dataset_matches = []
-                    
+
                     for row in reader:
                         # Add dataset source to each match
                         row['dataset_source'] = dataset_name
                         dataset_matches.append(row)
-                    
+
                     combined_data.extend(dataset_matches)
                     successful_datasets.append(dataset_name)
-                    print(f"✓ Loaded {len(dataset_matches)} matches from {dataset_name}")
-                    
+                    print(
+                        f"✓ Loaded {len(dataset_matches)} matches from {dataset_name}"
+                    )
+
                 except Exception as e:
                     print(f"Error parsing {dataset_name}: {str(e)}")
             else:
                 print(f"✗ Failed to load {dataset_name}")
-        
-        print(f"\nTotal matches loaded: {len(combined_data)} from {len(successful_datasets)} datasets")
+
+        print(
+            f"\nTotal matches loaded: {len(combined_data)} from {len(successful_datasets)} datasets"
+        )
         return combined_data, successful_datasets
-    
+
     def get_match_list(self, data=None, combined_data=None):
         """Get list of matches with basic info for selection"""
         if combined_data is None:
@@ -109,12 +138,14 @@ class TennisAnalyzer:
                 matches = []
                 for i, row in enumerate(reader):
                     if i >= 50:  # Limit to first 50 matches for performance
-                        break
-                        
+                        pass
+
                     match_info = {
                         'id': i,
+                        'original_index': i,
                         'date': row.get('date', 'Unknown'),
-                        'tournament': row.get('tny_name', 'Unknown Tournament'),
+                        'tournament': row.get('tny_name',
+                                              'Unknown Tournament'),
                         'player1': row.get('server1', 'Player 1'),
                         'player2': row.get('server2', 'Player 2'),
                         'winner': row.get('winner', ''),
@@ -126,16 +157,17 @@ class TennisAnalyzer:
                 return matches
             else:
                 # Fetch from multiple sources
-                combined_data, successful_datasets = self.fetch_all_tennis_data()
-        
+                combined_data, successful_datasets = self.fetch_all_tennis_data(
+                )
+
         if not combined_data:
             return []
-        
+
         matches = []
         for i, row in enumerate(combined_data):
             if i >= 200:  # Increased limit for multiple datasets
-                break
-                
+                pass
+
             match_info = {
                 'id': i,
                 'date': row.get('date', 'Unknown'),
@@ -148,9 +180,9 @@ class TennisAnalyzer:
                 'dataset_source': row.get('dataset_source', 'Unknown Dataset')
             }
             matches.append(match_info)
-        
+
         return matches
-    
+
     def analyze_single_match(self, data=None, match_id=0, combined_data=None):
         """Analyze a specific tennis match by ID with game-by-game breakdown"""
         if combined_data is None:
@@ -166,7 +198,8 @@ class TennisAnalyzer:
                         break
             else:
                 # Fetch from multiple sources
-                combined_data, successful_datasets = self.fetch_all_tennis_data()
+                combined_data, successful_datasets = self.fetch_all_tennis_data(
+                )
                 if not combined_data or match_id >= len(combined_data):
                     return None
                 target_match = combined_data[match_id]
@@ -174,21 +207,34 @@ class TennisAnalyzer:
             if match_id >= len(combined_data):
                 return None
             target_match = combined_data[match_id]
-        
+
         if not target_match:
             return None
-        
+
         # Initialize counters for single match
         stats = {
-            'aces': {'player1': 0, 'player2': 0},
-            'winners': {'player1': 0, 'player2': 0},
-            'errors': {'player1': 0, 'player2': 0},
-            'double_faults': {'player1': 0, 'player2': 0},
+            'aces': {
+                'player1': 0,
+                'player2': 0
+            },
+            'winners': {
+                'player1': 0,
+                'player2': 0
+            },
+            'errors': {
+                'player1': 0,
+                'player2': 0
+            },
+            'double_faults': {
+                'player1': 0,
+                'player2': 0
+            },
             'rally_lengths': [],
             'games': [],  # Game-by-game breakdown
             'match_info': {
                 'date': target_match.get('date', 'Unknown'),
-                'tournament': target_match.get('tny_name', 'Unknown Tournament'),
+                'tournament': target_match.get('tny_name',
+                                               'Unknown Tournament'),
                 'player1': target_match.get('server1', 'Player 1'),
                 'player2': target_match.get('server2', 'Player 2'),
                 'winner': target_match.get('winner', ''),
@@ -196,44 +242,64 @@ class TennisAnalyzer:
                 'duration': target_match.get('wh_minutes', 'N/A')
             }
         }
-        
+
         pbp_sequence = target_match.get('pbp', '')
         if not pbp_sequence:
             return stats
-        
+
         # Split by games (semicolon separated)
         games = pbp_sequence.split(';')
-        
         # Analyze each game
         for game_idx, game in enumerate(games):
             if not game:
                 continue
-                
+
             game_stats = {
                 'game_number': game_idx + 1,
                 'server': 1 if game_idx % 2 == 0 else 2,  # Alternate server
-                'points': [],
-                'aces': {'player1': 0, 'player2': 0},
-                'double_faults': {'player1': 0, 'player2': 0},
-                'errors': {'player1': 0, 'player2': 0},
+                'game_info': [],
+                'aces': {
+                    'player1': 0,
+                    'player2': 0
+                },
+                'double_faults': {
+                    'player1': 0,
+                    'player2': 0
+                },
+                'errors': {
+                    'player1': 0,
+                    'player2': 0
+                },
                 'rally_lengths': [],
-                'score_progression': []  # Track tennis scoring throughout the game
+                'score_progression':
+                []  # Track tennis scoring throughout the game
             }
-            
+
             # Parse each point in the game
             current_point = []
             rally_length = 0
-            server_position = game_stats['server']  # Use the actual server for this game
+            server_position = game_stats[
+                'server']  # Use the actual server for this game
             point_server = server_position  # Track who's serving this specific point
-            
+
             for shot in game:
+                print('current point' + shot)
                 if shot in 'SR':  # S=serve, R=return
                     current_point.append({
-                        'shot': shot,
-                        'player': point_server if shot == 'S' else (2 if point_server == 1 else 1),
-                        'description': 'Serve' if shot == 'S' else 'Return'
+                        'shot':
+                        shot,
+                        'player':
+                        point_server if shot == 'S' else
+                        (2 if point_server == 1 else 1),
+                        'description':
+                        'Serve' if shot == 'S' else 'Return'
                     })
                     rally_length += 1
+                    # Calculate tennis score after this point
+                    current_score = self._calculate_tennis_score(
+                        rally_length, point_server if shot == 'S' else
+                        (2 if point_server == 1 else 1), game_stats['server'])
+                    print(current_score)
                 elif shot == 'A':  # Ace - server wins point
                     current_point.append({
                         'shot': shot,
@@ -243,13 +309,19 @@ class TennisAnalyzer:
                         'winner': point_server,
                         'winner_code': 'A'  # Ace from server
                     })
+                    rally_length += 1
+                    current_score = self._calculate_tennis_score(
+                        rally_length, point_server, game_stats['server'])
                     if point_server == 1:
                         game_stats['aces']['player1'] += 1
                         stats['aces']['player1'] += 1
                     else:
                         game_stats['aces']['player2'] += 1
                         stats['aces']['player2'] += 1
-                    rally_length = 1
+                    rally_length += 1
+                    current_score = self._calculate_tennis_score(
+                        rally_length, point_server if shot == 'S' else
+                        (2 if point_server == 1 else 1), game_stats['server'])
                 elif shot == 'D':  # Double fault - returner wins point
                     current_point.append({
                         'shot': shot,
@@ -257,7 +329,8 @@ class TennisAnalyzer:
                         'description': 'Double Fault',
                         'point_end': True,
                         'winner': 2 if point_server == 1 else 1,
-                        'winner_code': 'D'  # Double fault gives point to returner
+                        'winner_code':
+                        'D'  # Double fault gives point to returner
                     })
                     if point_server == 1:
                         game_stats['double_faults']['player1'] += 1
@@ -269,98 +342,129 @@ class TennisAnalyzer:
                         game_stats['errors']['player2'] += 1
                         stats['double_faults']['player2'] += 1
                         stats['errors']['player2'] += 1
-                    rally_length = 1
+                    rally_length += 1
+                    current_score = self._calculate_tennis_score(
+                        rally_length, 2 if point_server == 1 else 1,
+                        game_stats['server'])
                 elif shot in '.':  # End of point - determine winner based on last shot
                     if current_point:
                         # Determine point winner and code
                         point_winner = None
                         winner_code = 'S'  # Default to server wins
-                        
+
                         # Check if there was already a definitive end (ace or double fault)
                         if not any(s.get('point_end') for s in current_point):
                             # No ace or double fault, determine winner based on rally
-                            last_shot_player = current_point[-1]['player'] if current_point else point_server
+                            last_shot_player = current_point[-1][
+                                'player'] if current_point else point_server
                             # If the rally ended normally, the last player to hit wins the point
                             point_winner = last_shot_player
                             winner_code = 'S' if point_winner == point_server else 'R'
                         else:
                             # Point already has winner from ace/double fault
-                            point_end_shot = next(s for s in current_point if s.get('point_end'))
+                            point_end_shot = next(s for s in current_point
+                                                  if s.get('point_end'))
                             point_winner = point_end_shot['winner']
                             winner_code = point_end_shot['winner_code']
-                        
+
+                        print('server')
+
+                        print(game_stats['server'])
+
                         # Calculate tennis score after this point
-                        current_score = self._calculate_tennis_score(game_stats['points'], point_winner, game_stats['server'])
-                        
+                        current_score = self._calculate_tennis_score(
+                            rally_length, point_winner, game_stats['server'])
+                        print(current_score)
+
                         # Add winner info to the point
                         point_data = {
-                            'point_number': len(game_stats['points']) + 1,
+                            'game_number': len(game_stats['game_info']) + 1,
                             'rally_length': rally_length,
                             'shots': current_point.copy(),
                             'winner': point_winner,
                             'winner_code': winner_code,
                             'server': point_server,
-                            'score_after': current_score if current_score else {"player1": "0", "player2": "0", "status": "playing"}
+                            'score_after':
+                            current_score if current_score else {
+                                "player1": "0",
+                                "player2": "0",
+                                "status": "playing"
+                            }
                         }
-                        
-                        game_stats['points'].append(point_data)
+
+                        game_stats['game_info'].append(point_data)
                         game_stats['score_progression'].append(current_score)
                         if rally_length > 0:
                             game_stats['rally_lengths'].append(rally_length)
                             stats['rally_lengths'].append(rally_length)
-                    
+
                     current_point = []
                     rally_length = 0
                     # Switch server for next point (alternate within the game)
                     point_server = 2 if point_server == 1 else 1
                 else:
                     # Other shots (winners, errors, etc.)
-                    current_player = point_server if len(current_point) % 2 == 0 else (2 if point_server == 1 else 1)
+                    current_player = point_server if len(
+                        current_point) % 2 == 0 else (
+                            2 if point_server == 1 else 1)
                     current_point.append({
-                        'shot': shot,
-                        'player': current_player,
-                        'description': self._get_shot_description(shot)
+                        'shot':
+                        shot,
+                        'player':
+                        current_player,
+                        'description':
+                        self._get_shot_description(shot)
                     })
                     rally_length += 1
-            
+
             # Handle end of game if there's an unfinished point
             if current_point and rally_length > 0:
                 # Determine winner for unfinished point
-                last_shot_player = current_point[-1]['player'] if current_point else point_server
+                last_shot_player = current_point[-1][
+                    'player'] if current_point else point_server
                 point_winner = last_shot_player
                 winner_code = 'S' if point_winner == point_server else 'R'
-                
+
                 point_data = {
-                    'point_number': len(game_stats['points']) + 1,
+                    'game_number': len(game_stats['game_info']) + 1,
                     'rally_length': rally_length,
                     'shots': current_point.copy(),
                     'winner': point_winner,
                     'winner_code': winner_code,
-                    'server': point_server
+                    'server': point_server,
                 }
-                
-                game_stats['points'].append(point_data)
+                game_stats['score_progression'].append(current_score)
+
+                game_stats['game_info'].append(point_data)
                 game_stats['rally_lengths'].append(rally_length)
                 stats['rally_lengths'].append(rally_length)
-            
+            print(rally_length)
             stats['games'].append(game_stats)
-        
+
         # Calculate summary statistics
         total_aces = stats['aces']['player1'] + stats['aces']['player2']
         total_errors = stats['errors']['player1'] + stats['errors']['player2']
-        total_double_faults = stats['double_faults']['player1'] + stats['double_faults']['player2']
-        
+        total_double_faults = stats['double_faults']['player1'] + stats[
+            'double_faults']['player2']
+
         stats['summary'] = {
-            'total_aces': total_aces,
-            'total_errors': total_errors,
-            'total_double_faults': total_double_faults,
-            'total_games': len(stats['games']),
-            'avg_rally_length': sum(stats['rally_lengths']) / len(stats['rally_lengths']) if stats['rally_lengths'] else 0,
-            'total_rallies': len(stats['rally_lengths'])
+            'total_aces':
+            total_aces,
+            'total_errors':
+            total_errors,
+            'total_double_faults':
+            total_double_faults,
+            'total_games':
+            len(stats['games']),
+            'avg_rally_length':
+            sum(stats['rally_lengths']) /
+            len(stats['rally_lengths']) if stats['rally_lengths'] else 0,
+            'total_rallies':
+            len(stats['rally_lengths'])
         }
-        
+
         return stats
-    
+
     def _get_shot_description(self, shot):
         """Get description for shot codes"""
         shot_map = {
@@ -377,82 +481,138 @@ class TennisAnalyzer:
             'L': 'Lob'
         }
         return shot_map.get(shot, f'Shot ({shot})')
-    
-    def _calculate_tennis_score(self, points_so_far, current_point_winner, game_server):
+
+    def _calculate_tennis_score(self, points_so_far, current_point_winner,
+                                game_server):
         """Calculate tennis score (15, 30, 40, Advantage, Game) after each point"""
         # Count points won by each player including the current point
         player1_points = 0
         player2_points = 0
-        
+
+        print('points_so_far')
+        print(points_so_far)
+        print('current_point_winner')
+        print(current_point_winner)
+        print('game_server')
+        print(game_server)
+
         # Count all previous points
-        for point in points_so_far:
-            if point.get('winner') == 1:
+        while points_so_far > 0:
+            if current_point_winner == 1:
                 player1_points += 1
-            elif point.get('winner') == 2:
+            elif current_point_winner == 2:
                 player2_points += 1
-        
-        # Add the current point winner
-        if current_point_winner == 1:
-            player1_points += 1
-        elif current_point_winner == 2:
-            player2_points += 1
-        
+            points_so_far -= 1
+
+        print('player1_points')
+
+        print(player1_points)
+        print('player2_points')
+
+        print(player2_points)
+
         # Convert to tennis scoring display
         def points_to_tennis_score(points):
             score_map = {0: "0", 1: "15", 2: "30", 3: "40"}
             return score_map.get(points, "40")
-        
+
         # Handle special scoring situations
         if player1_points >= 3 and player2_points >= 3:
             # Deuce and advantage situations
             if player1_points == player2_points:
-                return {"player1": "Deuce", "player2": "Deuce", "status": "deuce"}
+                return {
+                    "player1": "Deuce",
+                    "player2": "Deuce",
+                    "status": "deuce"
+                }
             elif player1_points > player2_points:
-                return {"player1": "Advantage", "player2": "40", "status": "advantage_p1"}
+                return {
+                    "player1": "Advantage",
+                    "player2": "40",
+                    "status": "advantage_p1"
+                }
             else:
-                return {"player1": "40", "player2": "Advantage", "status": "advantage_p2"}
-        
+                return {
+                    "player1": "40",
+                    "player2": "Advantage",
+                    "status": "advantage_p2"
+                }
+
         # Check for game completion
         if player1_points >= 4 and player1_points - player2_points >= 2:
-            return {"player1": "Game", "player2": points_to_tennis_score(player2_points), "status": "game_p1"}
+            return {
+                "player1": "Game",
+                "player2": points_to_tennis_score(player2_points),
+                "status": "game_p1"
+            }
         elif player2_points >= 4 and player2_points - player1_points >= 2:
-            return {"player1": points_to_tennis_score(player1_points), "player2": "Game", "status": "game_p2"}
-        
+            return {
+                "player1": points_to_tennis_score(player1_points),
+                "player2": "Game",
+                "status": "game_p2"
+            }
+
         # Regular scoring (before deuce)
         return {
-            "player1": points_to_tennis_score(player1_points), 
-            "player2": points_to_tennis_score(player2_points), 
+            "player1": points_to_tennis_score(player1_points),
+            "player2": points_to_tennis_score(player2_points),
             "status": "playing"
         }
 
+
 class TennisWebHandler(BaseHTTPRequestHandler):
+
     def __init__(self, *args, **kwargs):
         self.analyzer = TennisAnalyzer()
         super().__init__(*args, **kwargs)
-    
+
     def do_GET(self):
-        if self.path == '/':
+        parsed_path = urllib.parse.urlparse(self.path)
+        path = parsed_path.path
+
+        if path == '/':
             self.serve_html()
-        elif self.path == '/matches':
+
+        elif path == '/matches':
             self.serve_match_list()
-        elif self.path.startswith('/analyze/') and '/' in self.path[9:]:
+
+        elif path.startswith('/analyze/') and '/' in path[9:]:
             # Format: /analyze/{match_id}/{game_id}
-            parts = self.path.split('/')
-            try:
-                match_id = int(parts[2])
-                game_id = int(parts[3])
-                self.serve_game_analysis(match_id, game_id)
-            except (ValueError, IndexError):
+            parts = path.strip('/').split('/')
+            if len(parts) == 3:
+                try:
+                    match_id = int(parts[1])
+                    game_id = int(parts[2])
+                    self.serve_game_analysis(match_id, game_id)
+                except (ValueError, IndexError):
+                    self.send_error(400)
+            else:
                 self.send_error(400)
-        elif self.path.startswith('/analyze/'):
-            match_id = self.path.split('/')[-1]
-            try:
-                self.serve_single_match_analysis(int(match_id))
-            except ValueError:
+
+        elif path.startswith('/analyze/'):
+            parts = path.strip('/').split('/')
+            if len(parts) == 2:
+                try:
+                    match_id = int(parts[1])
+                    self.serve_single_match_analysis(match_id)
+                except ValueError:
+                    self.send_error(400)
+            else:
                 self.send_error(400)
+
         else:
             self.send_error(404)
-    
+
+    def serve_single_match_analysis(self, match_id):
+        try:
+            data = self.analyzer.analyze_single_match(match_id)
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode())
+        except Exception as e:
+            self.send_error_json(f"Error analyzing match: {str(e)}")
+
     def serve_html(self):
         html_content = """
 <!DOCTYPE html>
@@ -893,13 +1053,13 @@ class TennisWebHandler(BaseHTTPRequestHandler):
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎾 Tennis Match Analyzer</h1>
+            <h1>🎾 Tennis Match Analyzer test</h1>
             <p>Analyze point-by-point tennis match data with detailed statistics</p>
         </div>
 
         <div class="card">
             <div class="matches-section">
-                <h2>Available Tennis Matches</h2>
+                <h2>Available Tennis Matches test</h2>
                 <p style="margin: 20px 0; color: #666;">
                     Select a match from the list below to view detailed analysis
                 </p>
@@ -1028,7 +1188,6 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 
                 // Show dataset information if available
                 if (data.datasets_loaded) {
-                    console.log(`Loaded data from ${data.datasets_loaded.length} sources:`, data.datasets_loaded);
                     const matchCountElement = document.getElementById('match-count');
                     if (matchCountElement) {
                         matchCountElement.innerHTML += ` (from ${data.datasets_loaded.length} sources)`;
@@ -1088,28 +1247,26 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             updateMatchCount(matches.length);
         }
 
-        function filterMatchesByYear() {
-            const selectedYear = document.getElementById('year-filter').value;
-            
-            if (selectedYear === 'all') {
-                displayMatches(matchesData);
-                updateMatchCount(matchesData.length);
-            } else {
-                const filteredMatches = matchesData.filter(match => {
-                    const dateParts = match.date.split(' ');
-                    if (dateParts.length >= 3) {
-                        let year = dateParts[2];
-                        if (year.length === 2) {
-                            year = '20' + year;
-                        }
-                        return year === selectedYear;
-                    }
-                    return false;
-                });
-                displayMatches(filteredMatches);
-                updateMatchCount(filteredMatches.length);
-            }
-        }
+async function filterMatchesByYear() {
+    const selectedYear = document.getElementById('year-filter').value;
+    const url = selectedYear === 'all'
+        ? '/matches'
+        : `/matches?year=${encodeURIComponent(selectedYear)}`;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        matchesData = data.matches || [];
+        displayMatches(matchesData);
+        updateMatchCount(matchesData.length);
+    } catch (err) {
+        console.error(err);  // 🔍 pour voir l'erreur exacte dans la console
+        const container = document.getElementById('matches-container');
+        container.innerHTML = `<p>Error loading filtered matches: ${err.message}</p>`;
+    }
+}
+        
 
         function updateMatchCount(count) {
             const matchCount = document.getElementById('match-count');
@@ -1232,7 +1389,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 gameDiv.innerHTML = `
                     <div class="game-number">Game ${game.game_number}</div>
                     <div class="game-server">Server: ${serverName}</div>
-                    <div class="game-server">${game.points.length} points</div>
+                    <div class="game-server">${game.game_info.length} points</div>
                 `;
 
                 container.appendChild(gameDiv);
@@ -1252,7 +1409,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             try {
                 const response = await fetch(`/analyze/${matchId}/${gameId}`);
                 const data = await response.json();
-
+                console.log(data);
                 if (data.error) {
                     throw new Error(data.error);
                 }
@@ -1260,6 +1417,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 // Update game details
                 const matchInfo = data.match_info;
                 const serverName = data.server === 1 ? matchInfo.player1 : matchInfo.player2;
+                const winnerName = data.game_info.winner === 1 ? matchInfo.player1 : matchInfo.player2;
 
                 document.getElementById('game-title').textContent = 
                     `Game ${data.game_number} - ${matchInfo.player1} vs ${matchInfo.player2}`;
@@ -1268,7 +1426,8 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 gameDetails.innerHTML = `
                     <h4>Game ${data.game_number} Details</h4>
                     <p><strong>Server:</strong> ${serverName}</p>
-                    <p><strong>Points in this Game:</strong> ${data.points.length}</p>
+                    <p><strong>Winner:</strong> ${winnerName}</p>
+                    <p><strong>Points in this Game:</strong> ${data.game_info.length}</p>
                     <p><strong>Aces in this Game:</strong> ${data.aces.player1 + data.aces.player2}</p>
                     <p><strong>Double Faults in this Game:</strong> ${data.double_faults.player1 + data.double_faults.player2}</p>
                     <p><strong>Average Rally Length:</strong> ${data.rally_lengths.length > 0 ? (data.rally_lengths.reduce((a, b) => a + b, 0) / data.rally_lengths.length).toFixed(1) : 0}</p>
@@ -1276,7 +1435,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 gameDetails.style.display = 'block';
 
                 // Display points with score evolution
-                displayPointsWithScores(data.points, data.score_progression, matchInfo);
+                displayPointsWithScores(data.game_info, data.score_progression, matchInfo);
 
                 gameResults.style.display = 'block';
 
@@ -1288,7 +1447,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             }
         }
 
-        function displayPointsWithScores(points, scoreProgression, matchInfo) {
+        function displayPointsWithScores(game_info, scoreProgression, matchInfo) {
             const container = document.getElementById('points-container');
             container.innerHTML = '';
 
@@ -1301,7 +1460,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             `;
             container.appendChild(evolutionDiv);
 
-            points.forEach((point, index) => {
+            game_info.forEach((point, index) => {
                 const pointDiv = document.createElement('div');
                 pointDiv.className = 'point-item';
 
@@ -1318,10 +1477,10 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                         winnerDescription = `D: Double fault from ${serverName}, point to ${winnerName}`;
                         break;
                     case 'S':
-                        winnerDescription = `S: Server ${serverName} wins`;
+                        winnerDescription = `Result: Game ${serverName} wins`;
                         break;
                     case 'R':
-                        winnerDescription = `R: Point for returner ${winnerName}`;
+                        winnerDescription = `Result: Game  for returner ${winnerName}`;
                         break;
                     default:
                         winnerDescription = `Winner: ${winnerName}`;
@@ -1336,7 +1495,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
 
                 pointDiv.innerHTML = `
                     <div class="point-header">
-                        <span class="point-number">Point ${point.point_number}</span>
+                        <span class="point-number">Game ${point.game_number}</span>
                         <span class="rally-length">Rally Length: ${point.rally_length} shots</span>
                     </div>
                     <div class="point-winner" style="margin-bottom: 10px; font-weight: bold; color: #667eea;">
@@ -1366,63 +1525,73 @@ class TennisWebHandler(BaseHTTPRequestHandler):
 </body>
 </html>
         """
-        
+
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
         self.wfile.write(html_content.encode())
-    
+
     def serve_match_list(self):
+        import re
+
+        def extract_year(date_str):
+            if not date_str:
+                return None
+            # Format: YYYY-MM-DD
+            if re.match(r'^\d{4}-', date_str):
+                return date_str[:4]
+            # Format: DD MMM YY
+            elif re.match(r'^\d{2} \w{3} \d{2}$', date_str):
+                yy = date_str[-2:]
+                return '20' + yy if int(yy) < 50 else '19' + yy
+            return None
+
         try:
-            # Fetch from all available datasets
-            combined_data, successful_datasets = self.analyzer.fetch_all_tennis_data()
-            
-            if combined_data:
-                matches = self.analyzer.get_match_list(combined_data=combined_data)
-                if matches:
-                    response_data = {
-                        'matches': matches,
-                        'datasets_loaded': successful_datasets,
-                        'total_matches': len(matches)
-                    }
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(json.dumps(response_data).encode())
-                else:
-                    self.send_error_json("No matches found")
-            else:
-                self.send_error_json("Failed to fetch match data from any source")
+            # Extraire les paramètres de l'URL
+            query = urllib.parse.urlparse(self.path).query
+            params = urllib.parse.parse_qs(query)
+            year_filter = params.get('year', [None])[0]
+
+            # Récupération des données
+            combined_data, successful_datasets = self.analyzer.fetch_all_tennis_data(
+            )
+
+            # Générer la liste des matchs pour le frontend
+            matches = self.analyzer.get_match_list(combined_data=combined_data)
+
+            if year_filter:
+                matches = [
+                    m for m in matches
+                    if extract_year(m.get('date')) == year_filter
+                ]
+                # Réaffecte des ID continus mais garde original_index pour analyse
+                for new_id, match in enumerate(matches):
+                    match['id'] = new_id
+
+            # Répondre en JSON
+            response_data = {
+                'matches': matches,
+                'datasets_loaded': successful_datasets,
+                'total_matches': len(matches)
+            }
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode())
+
         except Exception as e:
             self.send_error_json(f"Error getting matches: {str(e)}")
-    
-    def serve_single_match_analysis(self, match_id):
-        try:
-            # Fetch from all available datasets
-            combined_data, successful_datasets = self.analyzer.fetch_all_tennis_data()
-            
-            if combined_data:
-                stats = self.analyzer.analyze_single_match(combined_data=combined_data, match_id=match_id)
-                if stats:
-                    stats['datasets_loaded'] = successful_datasets
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(json.dumps(stats).encode())
-                else:
-                    self.send_error_json("Failed to analyze match or match not found")
-            else:
-                self.send_error_json("Failed to fetch match data from any source")
-        except Exception as e:
-            self.send_error_json(f"Analysis error: {str(e)}")
-    
+
     def serve_game_analysis(self, match_id, game_id):
         try:
             # Fetch from all available datasets
-            combined_data, successful_datasets = self.analyzer.fetch_all_tennis_data()
-            
+            combined_data, successful_datasets = self.analyzer.fetch_all_tennis_data(
+            )
+
             if combined_data:
-                stats = self.analyzer.analyze_single_match(combined_data=combined_data, match_id=match_id)
+                stats = self.analyzer.analyze_single_match(
+                    combined_data=combined_data, match_id=match_id)
                 if stats and len(stats['games']) > game_id:
                     game_data = stats['games'][game_id]
                     game_data['match_info'] = stats['match_info']
@@ -1434,10 +1603,11 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 else:
                     self.send_error_json("Game not found")
             else:
-                self.send_error_json("Failed to fetch match data from any source")
+                self.send_error_json(
+                    "Failed to fetch match data from any source")
         except Exception as e:
             self.send_error_json(f"Game analysis error: {str(e)}")
-    
+
     def send_error_json(self, message):
         self.send_response(500)
         self.send_header('Content-type', 'application/json')
@@ -1445,11 +1615,13 @@ class TennisWebHandler(BaseHTTPRequestHandler):
         error_response = json.dumps({"error": message})
         self.wfile.write(error_response.encode())
 
+
 def run_server(port=5000):
     server_address = ('', port)
     httpd = HTTPServer(server_address, TennisWebHandler)
     print(f"Tennis analyzer server running on http://0.0.0.0:{port}")
     httpd.serve_forever()
+
 
 if __name__ == "__main__":
     run_server()
