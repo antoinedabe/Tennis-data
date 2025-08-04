@@ -103,7 +103,8 @@ class TennisAnalyzer:
                 'aces': {'player1': 0, 'player2': 0},
                 'double_faults': {'player1': 0, 'player2': 0},
                 'errors': {'player1': 0, 'player2': 0},
-                'rally_lengths': []
+                'rally_lengths': [],
+                'score_progression': []  # Track tennis scoring throughout the game
             }
             
             # Parse each point in the game
@@ -175,6 +176,9 @@ class TennisAnalyzer:
                             point_winner = point_end_shot['winner']
                             winner_code = point_end_shot['winner_code']
                         
+                        # Calculate tennis score after this point
+                        current_score = self._calculate_tennis_score(game_stats['points'], point_winner, game_stats['server'])
+                        
                         # Add winner info to the point
                         point_data = {
                             'point_number': len(game_stats['points']) + 1,
@@ -182,10 +186,12 @@ class TennisAnalyzer:
                             'shots': current_point.copy(),
                             'winner': point_winner,
                             'winner_code': winner_code,
-                            'server': point_server
+                            'server': point_server,
+                            'score_after': current_score
                         }
                         
                         game_stats['points'].append(point_data)
+                        game_stats['score_progression'].append(current_score)
                         if rally_length > 0:
                             game_stats['rally_lengths'].append(rally_length)
                             stats['rally_lengths'].append(rally_length)
@@ -258,6 +264,58 @@ class TennisAnalyzer:
             'L': 'Lob'
         }
         return shot_map.get(shot, f'Shot ({shot})')
+    
+    def _calculate_tennis_score(self, points_so_far, point_winner, game_server):
+        """Calculate tennis score (15, 30, 40, Advantage, Game) after each point"""
+        # Count points won by each player
+        player1_points = 0
+        player2_points = 0
+        
+        for point in points_so_far:
+            if point['winner'] == 1:
+                player1_points += 1
+            elif point['winner'] == 2:
+                player2_points += 1
+        
+        # Add the current point winner
+        if point_winner == 1:
+            player1_points += 1
+        elif point_winner == 2:
+            player2_points += 1
+        
+        # Convert to tennis scoring
+        def points_to_score(points):
+            if points == 0:
+                return "0"
+            elif points == 1:
+                return "15"
+            elif points == 2:
+                return "30"
+            elif points == 3:
+                return "40"
+            else:
+                return "40+"
+        
+        score1 = points_to_score(player1_points)
+        score2 = points_to_score(player2_points)
+        
+        # Handle deuce and advantage situations
+        if player1_points >= 3 and player2_points >= 3:
+            if player1_points == player2_points:
+                return {"player1": "Deuce", "player2": "Deuce", "status": "deuce"}
+            elif player1_points > player2_points:
+                return {"player1": "Advantage", "player2": "40", "status": "advantage_p1"}
+            else:
+                return {"player1": "40", "player2": "Advantage", "status": "advantage_p2"}
+        
+        # Check for game win
+        if (player1_points >= 4 and player1_points - player2_points >= 2):
+            return {"player1": "Game", "player2": score2, "status": "game_p1"}
+        elif (player2_points >= 4 and player2_points - player1_points >= 2):
+            return {"player1": score1, "player2": "Game", "status": "game_p2"}
+        
+        # Regular scoring
+        return {"player1": score1, "player2": score2, "status": "playing"}
 
 class TennisWebHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -618,6 +676,48 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             font-weight: bold;
         }
 
+        .tennis-score {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tennis-score.deuce {
+            background: #fff3cd;
+            border-color: #ffc107;
+        }
+
+        .tennis-score.advantage {
+            background: #d1ecf1;
+            border-color: #bee5eb;
+        }
+
+        .tennis-score.game-won {
+            background: #d4edda;
+            border-color: #c3e6cb;
+        }
+
+        .score-evolution {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .score-evolution h4 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #495057;
+        }
+
         @media (max-width: 768px) {
             .player-comparison {
                 grid-template-columns: 1fr;
@@ -937,8 +1037,8 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 `;
                 gameDetails.style.display = 'block';
 
-                // Display points
-                displayPoints(data.points, matchInfo);
+                // Display points with score evolution
+                displayPointsWithScores(data.points, data.score_progression, matchInfo);
 
                 gameResults.style.display = 'block';
 
@@ -950,11 +1050,20 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             }
         }
 
-        function displayPoints(points, matchInfo) {
+        function displayPointsWithScores(points, scoreProgression, matchInfo) {
             const container = document.getElementById('points-container');
             container.innerHTML = '';
 
-            points.forEach(point => {
+            // Add score evolution header
+            const evolutionDiv = document.createElement('div');
+            evolutionDiv.className = 'score-evolution';
+            evolutionDiv.innerHTML = `
+                <h4>Game Score Evolution (Traditional Tennis Scoring)</h4>
+                <p><strong>${matchInfo.player1}</strong> vs <strong>${matchInfo.player2}</strong></p>
+            `;
+            container.appendChild(evolutionDiv);
+
+            points.forEach((point, index) => {
                 const pointDiv = document.createElement('div');
                 pointDiv.className = 'point-item';
 
@@ -980,6 +1089,13 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                         winnerDescription = `Winner: ${winnerName}`;
                 }
 
+                // Get tennis score after this point
+                const score = point.score_after;
+                let scoreClass = 'tennis-score';
+                if (score.status === 'deuce') scoreClass += ' deuce';
+                else if (score.status.includes('advantage')) scoreClass += ' advantage';
+                else if (score.status.includes('game')) scoreClass += ' game-won';
+
                 pointDiv.innerHTML = `
                     <div class="point-header">
                         <span class="point-number">Point ${point.point_number}</span>
@@ -987,6 +1103,10 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                     </div>
                     <div class="point-winner" style="margin-bottom: 10px; font-weight: bold; color: #667eea;">
                         ${winnerDescription}
+                    </div>
+                    <div class="${scoreClass}">
+                        <span>${matchInfo.player1}: ${score.player1}</span>
+                        <span>${matchInfo.player2}: ${score.player2}</span>
                     </div>
                     <div class="shots-sequence">
                         ${point.shots.map(shot => {
