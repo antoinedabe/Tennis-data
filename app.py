@@ -265,42 +265,33 @@ class TennisAnalyzer:
         }
         return shot_map.get(shot, f'Shot ({shot})')
     
-    def _calculate_tennis_score(self, points_so_far, point_winner, game_server):
+    def _calculate_tennis_score(self, points_so_far, current_point_winner, game_server):
         """Calculate tennis score (15, 30, 40, Advantage, Game) after each point"""
-        # Count points won by each player
+        # Count points won by each player including the current point
         player1_points = 0
         player2_points = 0
         
+        # Count all previous points
         for point in points_so_far:
-            if point['winner'] == 1:
+            if point.get('winner') == 1:
                 player1_points += 1
-            elif point['winner'] == 2:
+            elif point.get('winner') == 2:
                 player2_points += 1
         
         # Add the current point winner
-        if point_winner == 1:
+        if current_point_winner == 1:
             player1_points += 1
-        elif point_winner == 2:
+        elif current_point_winner == 2:
             player2_points += 1
         
-        # Convert to tennis scoring
-        def points_to_score(points):
-            if points == 0:
-                return "0"
-            elif points == 1:
-                return "15"
-            elif points == 2:
-                return "30"
-            elif points == 3:
-                return "40"
-            else:
-                return "40+"
+        # Convert to tennis scoring display
+        def points_to_tennis_score(points):
+            score_map = {0: "0", 1: "15", 2: "30", 3: "40"}
+            return score_map.get(points, "40")
         
-        score1 = points_to_score(player1_points)
-        score2 = points_to_score(player2_points)
-        
-        # Handle deuce and advantage situations
+        # Handle special scoring situations
         if player1_points >= 3 and player2_points >= 3:
+            # Deuce and advantage situations
             if player1_points == player2_points:
                 return {"player1": "Deuce", "player2": "Deuce", "status": "deuce"}
             elif player1_points > player2_points:
@@ -308,14 +299,18 @@ class TennisAnalyzer:
             else:
                 return {"player1": "40", "player2": "Advantage", "status": "advantage_p2"}
         
-        # Check for game win
-        if (player1_points >= 4 and player1_points - player2_points >= 2):
-            return {"player1": "Game", "player2": score2, "status": "game_p1"}
-        elif (player2_points >= 4 and player2_points - player1_points >= 2):
-            return {"player1": score1, "player2": "Game", "status": "game_p2"}
+        # Check for game completion
+        if player1_points >= 4 and player1_points - player2_points >= 2:
+            return {"player1": "Game", "player2": points_to_tennis_score(player2_points), "status": "game_p1"}
+        elif player2_points >= 4 and player2_points - player1_points >= 2:
+            return {"player1": points_to_tennis_score(player1_points), "player2": "Game", "status": "game_p2"}
         
-        # Regular scoring
-        return {"player1": score1, "player2": score2, "status": "playing"}
+        # Regular scoring (before deuce)
+        return {
+            "player1": points_to_tennis_score(player1_points), 
+            "player2": points_to_tennis_score(player2_points), 
+            "status": "playing"
+        }
 
 class TennisWebHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
