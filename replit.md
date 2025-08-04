@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a simple, single-page web application featuring a "Hello World" button with modern styling. The project demonstrates basic HTML/CSS fundamentals with a focus on responsive design, modern CSS features like gradients and transitions, and clean visual aesthetics. It serves as a minimal starting point for web development projects.
+This is a Tennis Match Analyzer web application that combines Python backend data analysis with a modern HTML/CSS frontend. The application analyzes point-by-point tennis match data from GitHub datasets and displays comprehensive statistics through an interactive web interface. It demonstrates full-stack development using Python's HTTP server, data processing with CSV/requests libraries, and responsive web design.
 
 ## User Preferences
 
@@ -10,31 +10,42 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
-- **Single-page application**: Built with vanilla HTML, CSS, and JavaScript (no frameworks)
-- **Responsive design**: Uses flexbox for centering and viewport meta tag for mobile compatibility
-- **Modern CSS approach**: Leverages CSS3 features including gradients, box-shadows, and transitions
-- **Component-based styling**: Button is styled as a reusable component with hover states
+### Backend Architecture
+- **Python HTTP Server**: Custom web server using BaseHTTPRequestHandler for routing and data serving
+- **Data Analysis Engine**: TennisAnalyzer class that fetches and processes CSV tennis match data
+- **API Endpoints**: RESTful endpoints for serving HTML interface and JSON analysis results
+- **Real-time Processing**: Fetches live data from GitHub tennis datasets on demand
 
-### Styling Strategy
-- **CSS Reset**: Implements universal reset to ensure consistent rendering across browsers
-- **Design system**: Uses system fonts and a cohesive color palette
-- **Visual hierarchy**: Gradient background with elevated button using shadows and typography
-- **Interactive feedback**: Hover effects and transitions for better user experience
+### Frontend Architecture
+- **Single-page application**: Modern HTML5/CSS3/JavaScript interface with embedded styling
+- **Responsive design**: Mobile-first approach with CSS Grid and Flexbox layouts
+- **Interactive dashboard**: Real-time statistics display with player comparisons and match summaries
+- **Asynchronous requests**: JavaScript fetch API for seamless data retrieval without page refresh
+
+### Data Processing Pipeline
+- **External Data Source**: Tennis point-by-point data from JeffSackmann's GitHub repository
+- **CSV Processing**: Real-time parsing and analysis of match statistics including aces, winners, errors
+- **Statistical Analysis**: Calculation of player comparisons, rally lengths, and match summaries
+- **JSON API**: Structured data delivery for frontend consumption
 
 ### File Structure
-- **Minimal structure**: Single HTML file containing embedded CSS (inline styles in `<style>` tag)
-- **Self-contained**: No external dependencies or build process required
-- **Browser-ready**: Can be opened directly in any modern web browser
+- **app.py**: Main Python application with HTTP server, data analysis, and routing logic
+- **index.html**: Replaced by embedded HTML template in Python server for dynamic content
+- **Integrated approach**: Single Python file contains both backend logic and frontend template
 
 ## External Dependencies
 
-### Core Technologies
-- **HTML5**: Standard markup language for structure
-- **CSS3**: For styling, animations, and responsive design
-- **System fonts**: Uses native font stack (-apple-system, BlinkMacSystemFont, etc.)
+### Python Libraries
+- **requests**: HTTP client for fetching external tennis data from GitHub
+- **csv**: Built-in library for parsing tennis match data
+- **http.server**: Built-in HTTP server infrastructure
+- **json**: Built-in JSON serialization for API responses
+
+### Data Sources
+- **GitHub Tennis Dataset**: Real tennis match data from github.com/JeffSackmann/tennis_pointbypoint
+- **Live Data Fetching**: No local data storage, fetches fresh data on each analysis request
 
 ### Browser Requirements
-- **Modern browser support**: Requires browsers with CSS3 support for gradients and flexbox
-- **No external libraries**: Pure vanilla web technologies with no third-party dependencies
-- **No build tools**: Direct browser execution without compilation or bundling
+- **Modern browser support**: ES6+ JavaScript features, CSS Grid, and Flexbox support
+- **API compatibility**: Fetch API support for asynchronous data requests
+- **Responsive design**: Mobile and desktop compatibility
