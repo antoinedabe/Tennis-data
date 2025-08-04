@@ -187,7 +187,7 @@ class TennisAnalyzer:
                             'winner': point_winner,
                             'winner_code': winner_code,
                             'server': point_server,
-                            'score_after': current_score
+                            'score_after': current_score if current_score else {"player1": "0", "player2": "0", "status": "playing"}
                         }
                         
                         game_stats['points'].append(point_data)
@@ -1090,11 +1090,11 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 }
 
                 // Get tennis score after this point
-                const score = point.score_after;
+                const score = point.score_after || {player1: "0", player2: "0", status: "playing"};
                 let scoreClass = 'tennis-score';
                 if (score.status === 'deuce') scoreClass += ' deuce';
-                else if (score.status.includes('advantage')) scoreClass += ' advantage';
-                else if (score.status.includes('game')) scoreClass += ' game-won';
+                else if (score.status && score.status.includes('advantage')) scoreClass += ' advantage';
+                else if (score.status && score.status.includes('game')) scoreClass += ' game-won';
 
                 pointDiv.innerHTML = `
                     <div class="point-header">
