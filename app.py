@@ -20,17 +20,120 @@ class TennisAnalyzer:
             print(f"Error fetching data: {e}")
             return None
     
-    def get_match_list(self, data):
-        """Get list of matches with basic info for selection"""
-        if not data:
-            return []
+    def get_all_dataset_urls(self):
+        """Get URLs for all available tennis datasets"""
+        base_url = "https://raw.githubusercontent.com/JeffSackmann/tennis_pointbypoint/master/"
+        slam_base_url = "https://raw.githubusercontent.com/JeffSackmann/tennis_slam_pointbypoint/master/"
+        
+        datasets = {
+            "ATP Main Draw (Current)": base_url + "pbp_matches_atp_main_current.csv",
+            "ATP Qualifying (Current)": base_url + "pbp_matches_atp_qual_current.csv", 
+            "ATP Challenger Main": base_url + "pbp_matches_ch_main_current.csv",
+            "ITF Futures Main": base_url + "pbp_matches_fu_main_current.csv",
+            "ATP Main Draw (Archive)": base_url + "pbp_matches_atp_main_archive.csv",
+            "ATP Qualifying (Archive)": base_url + "pbp_matches_atp_qual_archive.csv",
+            "ATP Challenger (Archive)": base_url + "pbp_matches_ch_main_archive.csv",
+            "ITF Futures (Archive)": base_url + "pbp_matches_fu_main_archive.csv"
+        }
+        
+        # Add Grand Slam datasets for recent years
+        grand_slam_years = ["2022", "2021", "2020", "2019", "2018"]
+        grand_slams = ["australian-open", "french-open", "wimbledon", "us-open"]
+        
+        for year in grand_slam_years:
+            for slam in grand_slams:
+                dataset_name = f"{slam.replace('-', ' ').title()} {year}"
+                datasets[dataset_name] = f"{slam_base_url}{year}-{slam}-matches.csv"
+        
+        return datasets
+    
+    def fetch_all_tennis_data(self, selected_datasets=None):
+        """Fetch data from multiple tennis datasets"""
+        all_datasets = self.get_all_dataset_urls()
+        
+        if selected_datasets:
+            # Filter to only selected datasets
+            datasets_to_fetch = {k: v for k, v in all_datasets.items() if k in selected_datasets}
+        else:
+            # Use primary datasets by default
+            datasets_to_fetch = {
+                "ATP Main Draw (Current)": all_datasets["ATP Main Draw (Current)"],
+                "ATP Main Draw (Archive)": all_datasets["ATP Main Draw (Archive)"],
+                "Australian Open 2022": all_datasets.get("Australian Open 2022", ""),
+                "French Open 2022": all_datasets.get("French Open 2022", ""),
+                "Wimbledon 2022": all_datasets.get("Wimbledon 2022", ""),
+                "Us Open 2022": all_datasets.get("Us Open 2022", "")
+            }
+        
+        combined_data = []
+        successful_datasets = []
+        
+        for dataset_name, url in datasets_to_fetch.items():
+            if not url:
+                continue
+                
+            print(f"Fetching {dataset_name}...")
+            data = self.fetch_tennis_data(url)
             
-        f = StringIO(data)
-        reader = csv.DictReader(f)
+            if data:
+                # Parse the CSV data
+                try:
+                    f = StringIO(data)
+                    reader = csv.DictReader(f)
+                    dataset_matches = []
+                    
+                    for row in reader:
+                        # Add dataset source to each match
+                        row['dataset_source'] = dataset_name
+                        dataset_matches.append(row)
+                    
+                    combined_data.extend(dataset_matches)
+                    successful_datasets.append(dataset_name)
+                    print(f"✓ Loaded {len(dataset_matches)} matches from {dataset_name}")
+                    
+                except Exception as e:
+                    print(f"Error parsing {dataset_name}: {str(e)}")
+            else:
+                print(f"✗ Failed to load {dataset_name}")
+        
+        print(f"\nTotal matches loaded: {len(combined_data)} from {len(successful_datasets)} datasets")
+        return combined_data, successful_datasets
+    
+    def get_match_list(self, data=None, combined_data=None):
+        """Get list of matches with basic info for selection"""
+        if combined_data is None:
+            if data:
+                # Legacy single dataset mode
+                f = StringIO(data)
+                reader = csv.DictReader(f)
+                matches = []
+                for i, row in enumerate(reader):
+                    if i >= 50:  # Limit to first 50 matches for performance
+                        break
+                        
+                    match_info = {
+                        'id': i,
+                        'date': row.get('date', 'Unknown'),
+                        'tournament': row.get('tny_name', 'Unknown Tournament'),
+                        'player1': row.get('server1', 'Player 1'),
+                        'player2': row.get('server2', 'Player 2'),
+                        'winner': row.get('winner', ''),
+                        'score': row.get('score', 'N/A'),
+                        'duration': row.get('wh_minutes', 'N/A'),
+                        'dataset_source': 'Single Dataset'
+                    }
+                    matches.append(match_info)
+                return matches
+            else:
+                # Fetch from multiple sources
+                combined_data, successful_datasets = self.fetch_all_tennis_data()
+        
+        if not combined_data:
+            return []
         
         matches = []
-        for i, row in enumerate(reader):
-            if i >= 50:  # Limit to first 50 matches for performance
+        for i, row in enumerate(combined_data):
+            if i >= 200:  # Increased limit for multiple datasets
                 break
                 
             match_info = {
@@ -41,26 +144,36 @@ class TennisAnalyzer:
                 'player2': row.get('server2', 'Player 2'),
                 'winner': row.get('winner', ''),
                 'score': row.get('score', 'N/A'),
-                'duration': row.get('wh_minutes', 'N/A')
+                'duration': row.get('wh_minutes', 'N/A'),
+                'dataset_source': row.get('dataset_source', 'Unknown Dataset')
             }
             matches.append(match_info)
         
         return matches
     
-    def analyze_single_match(self, data, match_id):
+    def analyze_single_match(self, data=None, match_id=0, combined_data=None):
         """Analyze a specific tennis match by ID with game-by-game breakdown"""
-        if not data:
-            return None
-            
-        f = StringIO(data)
-        reader = csv.DictReader(f)
-        
-        # Find the specific match
-        target_match = None
-        for i, row in enumerate(reader):
-            if i == match_id:
-                target_match = row
-                break
+        if combined_data is None:
+            if data:
+                # Legacy single dataset mode
+                f = StringIO(data)
+                reader = csv.DictReader(f)
+                # Find the specific match
+                target_match = None
+                for i, row in enumerate(reader):
+                    if i == match_id:
+                        target_match = row
+                        break
+            else:
+                # Fetch from multiple sources
+                combined_data, successful_datasets = self.fetch_all_tennis_data()
+                if not combined_data or match_id >= len(combined_data):
+                    return None
+                target_match = combined_data[match_id]
+        else:
+            if match_id >= len(combined_data):
+                return None
+            target_match = combined_data[match_id]
         
         if not target_match:
             return None
@@ -909,9 +1022,18 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                     throw new Error(data.error);
                 }
 
-                matchesData = data;
-                setupYearFilter(data);
-                displayMatches(data);
+                matchesData = data.matches || data;
+                setupYearFilter(data.matches || data);
+                displayMatches(data.matches || data);
+                
+                // Show dataset information if available
+                if (data.datasets_loaded) {
+                    console.log(`Loaded data from ${data.datasets_loaded.length} sources:`, data.datasets_loaded);
+                    const matchCountElement = document.getElementById('match-count');
+                    if (matchCountElement) {
+                        matchCountElement.innerHTML += ` (from ${data.datasets_loaded.length} sources)`;
+                    }
+                }
                 matchesList.style.display = 'block';
 
             } catch (err) {
@@ -928,14 +1050,23 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             // Extract unique years from matches
             const years = new Set();
             matches.forEach(match => {
-                // Extract year from date format "DD MMM YY"
-                const dateParts = match.date.split(' ');
-                if (dateParts.length >= 3) {
-                    let year = dateParts[2];
-                    // Convert 2-digit year to 4-digit (assuming 2000s)
-                    if (year.length === 2) {
-                        year = '20' + year;
+                // Extract year from date format "YYYY-MM-DD" or "DD MMM YY"
+                let year;
+                if (match.date.includes('-')) {
+                    // Format: YYYY-MM-DD
+                    year = match.date.split('-')[0];
+                } else {
+                    // Format: DD MMM YY
+                    const dateParts = match.date.split(' ');
+                    if (dateParts.length >= 3) {
+                        year = dateParts[2];
+                        // Convert 2-digit year to 4-digit (assuming 2000s)
+                        if (year.length === 2) {
+                            year = '20' + year;
+                        }
                     }
+                }
+                if (year) {
                     years.add(year);
                 }
             });
@@ -1242,32 +1373,38 @@ class TennisWebHandler(BaseHTTPRequestHandler):
         self.wfile.write(html_content.encode())
     
     def serve_match_list(self):
-        url = "https://raw.githubusercontent.com/JeffSackmann/tennis_pointbypoint/master/pbp_matches_atp_main_current.csv"
-        
         try:
-            data = self.analyzer.fetch_tennis_data(url)
-            if data:
-                matches = self.analyzer.get_match_list(data)
+            # Fetch from all available datasets
+            combined_data, successful_datasets = self.analyzer.fetch_all_tennis_data()
+            
+            if combined_data:
+                matches = self.analyzer.get_match_list(combined_data=combined_data)
                 if matches:
+                    response_data = {
+                        'matches': matches,
+                        'datasets_loaded': successful_datasets,
+                        'total_matches': len(matches)
+                    }
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
-                    self.wfile.write(json.dumps(matches).encode())
+                    self.wfile.write(json.dumps(response_data).encode())
                 else:
                     self.send_error_json("No matches found")
             else:
-                self.send_error_json("Failed to fetch match data")
+                self.send_error_json("Failed to fetch match data from any source")
         except Exception as e:
             self.send_error_json(f"Error getting matches: {str(e)}")
     
     def serve_single_match_analysis(self, match_id):
-        url = "https://raw.githubusercontent.com/JeffSackmann/tennis_pointbypoint/master/pbp_matches_atp_main_current.csv"
-        
         try:
-            data = self.analyzer.fetch_tennis_data(url)
-            if data:
-                stats = self.analyzer.analyze_single_match(data, match_id)
+            # Fetch from all available datasets
+            combined_data, successful_datasets = self.analyzer.fetch_all_tennis_data()
+            
+            if combined_data:
+                stats = self.analyzer.analyze_single_match(combined_data=combined_data, match_id=match_id)
                 if stats:
+                    stats['datasets_loaded'] = successful_datasets
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
@@ -1275,20 +1412,21 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 else:
                     self.send_error_json("Failed to analyze match or match not found")
             else:
-                self.send_error_json("Failed to fetch match data")
+                self.send_error_json("Failed to fetch match data from any source")
         except Exception as e:
             self.send_error_json(f"Analysis error: {str(e)}")
     
     def serve_game_analysis(self, match_id, game_id):
-        url = "https://raw.githubusercontent.com/JeffSackmann/tennis_pointbypoint/master/pbp_matches_atp_main_current.csv"
-        
         try:
-            data = self.analyzer.fetch_tennis_data(url)
-            if data:
-                stats = self.analyzer.analyze_single_match(data, match_id)
+            # Fetch from all available datasets
+            combined_data, successful_datasets = self.analyzer.fetch_all_tennis_data()
+            
+            if combined_data:
+                stats = self.analyzer.analyze_single_match(combined_data=combined_data, match_id=match_id)
                 if stats and len(stats['games']) > game_id:
                     game_data = stats['games'][game_id]
                     game_data['match_info'] = stats['match_info']
+                    game_data['datasets_loaded'] = successful_datasets
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
@@ -1296,7 +1434,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 else:
                     self.send_error_json("Game not found")
             else:
-                self.send_error_json("Failed to fetch match data")
+                self.send_error_json("Failed to fetch match data from any source")
         except Exception as e:
             self.send_error_json(f"Game analysis error: {str(e)}")
     
