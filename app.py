@@ -109,40 +109,43 @@ class TennisAnalyzer:
             # Parse each point in the game
             current_point = []
             rally_length = 0
-            server_position = 1  # Start with player1 serving
+            server_position = game_stats['server']  # Use the actual server for this game
+            point_server = server_position  # Track who's serving this specific point
             
             for shot in game:
                 if shot in 'SR':  # S=serve, R=return
                     current_point.append({
                         'shot': shot,
-                        'player': server_position if shot == 'S' else (2 if server_position == 1 else 1),
+                        'player': point_server if shot == 'S' else (2 if point_server == 1 else 1),
                         'description': 'Serve' if shot == 'S' else 'Return'
                     })
                     rally_length += 1
-                elif shot == 'A':  # Ace
+                elif shot == 'A':  # Ace - server wins point
                     current_point.append({
                         'shot': shot,
-                        'player': server_position,
+                        'player': point_server,
                         'description': 'Ace',
                         'point_end': True,
-                        'winner': server_position
+                        'winner': point_server,
+                        'winner_code': 'A'  # Ace from server
                     })
-                    if server_position == 1:
+                    if point_server == 1:
                         game_stats['aces']['player1'] += 1
                         stats['aces']['player1'] += 1
                     else:
                         game_stats['aces']['player2'] += 1
                         stats['aces']['player2'] += 1
                     rally_length = 1
-                elif shot == 'D':  # Double fault
+                elif shot == 'D':  # Double fault - returner wins point
                     current_point.append({
                         'shot': shot,
-                        'player': server_position,
+                        'player': point_server,
                         'description': 'Double Fault',
                         'point_end': True,
-                        'winner': 2 if server_position == 1 else 1
+                        'winner': 2 if point_server == 1 else 1,
+                        'winner_code': 'D'  # Double fault gives point to returner
                     })
-                    if server_position == 1:
+                    if point_server == 1:
                         game_stats['double_faults']['player1'] += 1
                         game_stats['errors']['player1'] += 1
                         stats['double_faults']['player1'] += 1
@@ -153,36 +156,71 @@ class TennisAnalyzer:
                         stats['double_faults']['player2'] += 1
                         stats['errors']['player2'] += 1
                     rally_length = 1
-                elif shot in '.':  # End of point
+                elif shot in '.':  # End of point - determine winner based on last shot
                     if current_point:
-                        game_stats['points'].append({
+                        # Determine point winner and code
+                        point_winner = None
+                        winner_code = 'S'  # Default to server wins
+                        
+                        # Check if there was already a definitive end (ace or double fault)
+                        if not any(s.get('point_end') for s in current_point):
+                            # No ace or double fault, determine winner based on rally
+                            last_shot_player = current_point[-1]['player'] if current_point else point_server
+                            # If the rally ended normally, the last player to hit wins the point
+                            point_winner = last_shot_player
+                            winner_code = 'S' if point_winner == point_server else 'R'
+                        else:
+                            # Point already has winner from ace/double fault
+                            point_end_shot = next(s for s in current_point if s.get('point_end'))
+                            point_winner = point_end_shot['winner']
+                            winner_code = point_end_shot['winner_code']
+                        
+                        # Add winner info to the point
+                        point_data = {
                             'point_number': len(game_stats['points']) + 1,
                             'rally_length': rally_length,
-                            'shots': current_point.copy()
-                        })
+                            'shots': current_point.copy(),
+                            'winner': point_winner,
+                            'winner_code': winner_code,
+                            'server': point_server
+                        }
+                        
+                        game_stats['points'].append(point_data)
                         if rally_length > 0:
                             game_stats['rally_lengths'].append(rally_length)
                             stats['rally_lengths'].append(rally_length)
+                    
                     current_point = []
                     rally_length = 0
-                    # Switch server for next point
-                    server_position = 2 if server_position == 1 else 1
+                    # Switch server for next point (alternate within the game)
+                    point_server = 2 if point_server == 1 else 1
                 else:
                     # Other shots (winners, errors, etc.)
+                    current_player = point_server if len(current_point) % 2 == 0 else (2 if point_server == 1 else 1)
                     current_point.append({
                         'shot': shot,
-                        'player': server_position if len(current_point) % 2 == 0 else (2 if server_position == 1 else 1),
+                        'player': current_player,
                         'description': self._get_shot_description(shot)
                     })
                     rally_length += 1
             
-            # Handle end of game
+            # Handle end of game if there's an unfinished point
             if current_point and rally_length > 0:
-                game_stats['points'].append({
+                # Determine winner for unfinished point
+                last_shot_player = current_point[-1]['player'] if current_point else point_server
+                point_winner = last_shot_player
+                winner_code = 'S' if point_winner == point_server else 'R'
+                
+                point_data = {
                     'point_number': len(game_stats['points']) + 1,
                     'rally_length': rally_length,
-                    'shots': current_point.copy()
-                })
+                    'shots': current_point.copy(),
+                    'winner': point_winner,
+                    'winner_code': winner_code,
+                    'server': point_server
+                }
+                
+                game_stats['points'].append(point_data)
                 game_stats['rally_lengths'].append(rally_length)
                 stats['rally_lengths'].append(rally_length)
             
@@ -920,10 +958,35 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 const pointDiv = document.createElement('div');
                 pointDiv.className = 'point-item';
 
+                // Determine winner description
+                const winnerName = point.winner === 1 ? matchInfo.player1 : matchInfo.player2;
+                const serverName = point.server === 1 ? matchInfo.player1 : matchInfo.player2;
+                
+                let winnerDescription = '';
+                switch(point.winner_code) {
+                    case 'A':
+                        winnerDescription = `A: Ace from ${serverName}`;
+                        break;
+                    case 'D':
+                        winnerDescription = `D: Double fault from ${serverName}, point to ${winnerName}`;
+                        break;
+                    case 'S':
+                        winnerDescription = `S: Server ${serverName} wins`;
+                        break;
+                    case 'R':
+                        winnerDescription = `R: Point for returner ${winnerName}`;
+                        break;
+                    default:
+                        winnerDescription = `Winner: ${winnerName}`;
+                }
+
                 pointDiv.innerHTML = `
                     <div class="point-header">
                         <span class="point-number">Point ${point.point_number}</span>
                         <span class="rally-length">Rally Length: ${point.rally_length} shots</span>
+                    </div>
+                    <div class="point-winner" style="margin-bottom: 10px; font-weight: bold; color: #667eea;">
+                        ${winnerDescription}
                     </div>
                     <div class="shots-sequence">
                         ${point.shots.map(shot => {
@@ -933,7 +996,6 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                             
                             return `<span class="${classes.join(' ')}" title="${playerName}">
                                 ${shot.description}
-                                ${shot.point_end ? ` (Winner: ${shot.winner === 1 ? matchInfo.player1 : matchInfo.player2})` : ''}
                             </span>`;
                         }).join('')}
                     </div>
