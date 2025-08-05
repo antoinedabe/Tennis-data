@@ -277,37 +277,21 @@ class TennisAnalyzer:
 
             # Parse each point in the game
             current_point = []
-            current_score = {'player1': 0, 'player2':0, 'status':'active'}
-            player1_number_of_points = 0
-            player2_number_of_points = 0
+            current_score = {'player1': "0", 'player2': "0", 'status': 'playing'}
+            player1_points = 0
+            player2_points = 0
             rally_length = 0
-            server_position = game_stats[
-                'server']  # Use the actual server for this game
-            point_server = server_position  # Track who's serving this specific point
+            server_position = game_stats['server']
+            point_server = server_position
 
             for shot in game:
-                print('current point' + shot)
                 if shot in 'SR':  # S=serve, R=return
                     current_point.append({
-                        'shot':
-                        shot,
-                        'player':
-                        point_server if shot == 'S' else
-                        (2 if point_server == 1 else 1),
-                        'description':
-                        'Serve' if shot == 'S' else 'Return'
+                        'shot': shot,
+                        'player': point_server if shot == 'S' else (2 if point_server == 1 else 1),
+                        'description': 'Serve' if shot == 'S' else 'Return'
                     })
                     rally_length += 1
-                    # Calculate tennis score after this point
-                    if shot == 'S' and point_server == 1 :
-                        player1_number_of_points += 1
-                    else :
-                        player2_number_of_points += 1
-                    
-                    current_score = self._calculate_tennis_score(
-                        rally_length, point_server if shot == 'S' else
-                        (2 if point_server == 1 else 1), current_score,player1_number_of_points,player2_number_of_points)
-                    print(current_score)
                 elif shot == 'A':  # Ace - server wins point
                     current_point.append({
                         'shot': shot,
@@ -315,25 +299,20 @@ class TennisAnalyzer:
                         'description': 'Ace',
                         'point_end': True,
                         'winner': point_server,
-                        'winner_code': 'A'  # Ace from server
+                        'winner_code': 'A'
                     })
                     rally_length += 1
-                    if point_server == 1 :
-                        player1_number_of_points += 1
-                    else :
-                        player2_number_of_points += 1
-                    current_score = self._calculate_tennis_score(
-                        rally_length, point_server,  current_score,player1_number_of_points,player2_number_of_points)
                     if point_server == 1:
+                        player1_points += 1
                         game_stats['aces']['player1'] += 1
                         stats['aces']['player1'] += 1
                     else:
+                        player2_points += 1
                         game_stats['aces']['player2'] += 1
                         stats['aces']['player2'] += 1
-                    rally_length += 1
+                    
                     current_score = self._calculate_tennis_score(
-                        rally_length, point_server if shot == 'S' else
-                        (2 if point_server == 1 else 1), current_score,player1_number_of_points,player2_number_of_points)
+                        rally_length, point_server, current_score, player1_points, player2_points)
                 elif shot == 'D':  # Double fault - returner wins point
                     current_point.append({
                         'shot': shot,
@@ -341,84 +320,72 @@ class TennisAnalyzer:
                         'description': 'Double Fault',
                         'point_end': True,
                         'winner': 2 if point_server == 1 else 1,
-                        'winner_code':
-                        'D'  # Double fault gives point to returner
+                        'winner_code': 'D'
                     })
                     if point_server == 1:
+                        player2_points += 1  # Returner gets the point
                         game_stats['double_faults']['player1'] += 1
                         game_stats['errors']['player1'] += 1
                         stats['double_faults']['player1'] += 1
                         stats['errors']['player1'] += 1
                     else:
+                        player1_points += 1  # Returner gets the point
                         game_stats['double_faults']['player2'] += 1
                         game_stats['errors']['player2'] += 1
                         stats['double_faults']['player2'] += 1
                         stats['errors']['player2'] += 1
+                    
                     rally_length += 1
-                    if point_server == 1 :
-                        player2_number_of_points += 1
-                    else :
-                        player1_number_of_points += 1
                     current_score = self._calculate_tennis_score(
-                        rally_length, 2 if point_server == 1 else 1,
-                        current_score,player1_number_of_points,player2_number_of_points)
+                        rally_length, 2 if point_server == 1 else 1, current_score, player1_points, player2_points)
                 elif shot in '.':  # End of point - determine winner based on last shot
                     if current_point:
                         # Determine point winner and code
                         point_winner = None
-                        winner_code = 'S'  # Default to server wins
+                        winner_code = 'S'
 
                         # Check if there was already a definitive end (ace or double fault)
-                        if not any(s.get('point_end') for s in current_point):
-                            # No ace or double fault, determine winner based on rally
-                            last_shot_player = current_point[-1][
-                                'player'] if current_point else point_server
-                            # If the rally ended normally, the last player to hit wins the point
-                            point_winner = last_shot_player
-                            winner_code = 'S' if point_winner == point_server else 'R'
-                        else:
+                        point_end_shots = [s for s in current_point if s.get('point_end')]
+                        if point_end_shots:
                             # Point already has winner from ace/double fault
-                            point_end_shot = next(s for s in current_point
-                                                  if s.get('point_end'))
+                            point_end_shot = point_end_shots[0]
                             point_winner = point_end_shot['winner']
                             winner_code = point_end_shot['winner_code']
-
-                        print('server')
-
-                        print(game_stats['server'])
-
-                        # Calculate tennis score after this point
-                        current_score = self._calculate_tennis_score(
-                            rally_length, point_winner, current_score,player1_number_of_points,player2_number_of_points)
-                        print(current_score)
+                        else:
+                            # No ace or double fault, determine winner based on rally
+                            last_shot_player = current_point[-1]['player'] if current_point else point_server
+                            point_winner = last_shot_player
+                            winner_code = 'S' if point_winner == point_server else 'R'
+                            
+                            # Update points for regular rally end
+                            if point_winner == 1:
+                                player1_points += 1
+                            else:
+                                player2_points += 1
+                            
+                            # Calculate tennis score after this point
+                            current_score = self._calculate_tennis_score(
+                                rally_length, point_winner, current_score, player1_points, player2_points)
 
                         # Add winner info to the point
                         point_data = {
-                            'game_number': len(game_stats['game_info']) + 1,
+                            'point_number': len(game_stats['game_info']) + 1,
                             'rally_length': rally_length,
                             'shots': current_point.copy(),
                             'winner': point_winner,
                             'winner_code': winner_code,
                             'server': point_server,
-                            'score_progression': current_score,
-                            'score_after':
-                            current_score if current_score else {
-                                "player1": "0",
-                                "player2": "0",
-                                "status": "playing"
-                            }
+                            'score_after': current_score.copy()
                         }
 
                         game_stats['game_info'].append(point_data)
-                        game_stats['score_progression'].append(current_score)
+                        game_stats['score_progression'].append(current_score.copy())
                         if rally_length > 0:
                             game_stats['rally_lengths'].append(rally_length)
                             stats['rally_lengths'].append(rally_length)
 
                     current_point = []
                     rally_length = 0
-                    # Switch server for next point (alternate within the game)
-                    point_server = 2 if point_server == 1 else 1
                 else:
                     # Other shots (winners, errors, etc.)
                     current_player = point_server if len(
@@ -436,27 +403,42 @@ class TennisAnalyzer:
 
             # Handle end of game if there's an unfinished point
             if current_point and rally_length > 0:
-                # Determine winner for unfinished point
-                last_shot_player = current_point[-1][
-                    'player'] if current_point else point_server
+                last_shot_player = current_point[-1]['player'] if current_point else point_server
                 point_winner = last_shot_player
                 winner_code = 'S' if point_winner == point_server else 'R'
+                
+                # Update points for unfinished point
+                if point_winner == 1:
+                    player1_points += 1
+                else:
+                    player2_points += 1
+                
+                current_score = self._calculate_tennis_score(
+                    rally_length, point_winner, current_score, player1_points, player2_points)
 
                 point_data = {
-                    'game_number': len(game_stats['game_info']) + 1,
+                    'point_number': len(game_stats['game_info']) + 1,
                     'rally_length': rally_length,
                     'shots': current_point.copy(),
                     'winner': point_winner,
                     'winner_code': winner_code,
                     'server': point_server,
+                    'score_after': current_score.copy()
                 }
-                game_stats['score_progression'].append(current_score)
 
                 game_stats['game_info'].append(point_data)
+                game_stats['score_progression'].append(current_score.copy())
                 game_stats['rally_lengths'].append(rally_length)
                 stats['rally_lengths'].append(rally_length)
-            print(rally_length)
-            stats['score_progression'].append(current_score)
+            
+            # Determine game winner
+            if current_score.get('status', '').startswith('game_'):
+                game_stats['winner'] = 1 if current_score['status'] == 'game_p1' else 2
+            else:
+                # If no clear winner, determine based on points
+                game_stats['winner'] = 1 if player1_points > player2_points else 2
+            
+            game_stats['final_score'] = current_score.copy()
             stats['games'].append(game_stats)
 
         # Calculate summary statistics
@@ -501,27 +483,8 @@ class TennisAnalyzer:
         return shot_map.get(shot, f'Shot ({shot})')
 
     def _calculate_tennis_score(self, points_so_far, current_point_winner,
-                                game_server,player1_points,player2_points):
+                                current_score, player1_points, player2_points):
         """Calculate tennis score (15, 30, 40, Advantage, Game) after each point"""
-        # Count points won by each player including the current point
-
-
-        print('points_so_far')
-        print(points_so_far)
-        print('current_point_winner')
-        print(current_point_winner)
-        print('game_server')
-        print(game_server)
-
-        # Count all previous points
-        
-
-        print('player1_points')
-
-        print(player1_points)
-        print('player2_points')
-
-        print(player2_points)
 
         # Convert to tennis scoring display
         def points_to_tennis_score(points):
@@ -1435,12 +1398,15 @@ async function filterMatchesByYear() {
                     `Game ${data.game_number} - ${matchInfo.player1} vs ${matchInfo.player2}`;
                 
                 const gameDetails = document.getElementById('game-details');
+                const finalScore = data.final_score || {player1: "0", player2: "0"};
+                const gameWinner = data.winner === 1 ? matchInfo.player1 : matchInfo.player2;
+                
                 gameDetails.innerHTML = `
                     <h4>Game ${data.game_number} Details</h4>
                     <p><strong>Server:</strong> ${serverName}</p>
-                    <p><strong>Winner:</strong> ${winnerName}</p>
+                    <p><strong>Game Winner:</strong> ${gameWinner}</p>
+                    <p><strong>Final Score:</strong> ${matchInfo.player1} ${finalScore.player1} - ${finalScore.player2} ${matchInfo.player2}</p>
                     <p><strong>Points in this Game:</strong> ${data.game_info.length}</p>
-                    <p><strong>Points in this Game:</strong> ${data.score_progression}</p>
                     <p><strong>Aces in this Game:</strong> ${data.aces.player1 + data.aces.player2}</p>
                     <p><strong>Double Faults in this Game:</strong> ${data.double_faults.player1 + data.double_faults.player2}</p>
                     <p><strong>Average Rally Length:</strong> ${data.rally_lengths.length > 0 ? (data.rally_lengths.reduce((a, b) => a + b, 0) / data.rally_lengths.length).toFixed(1) : 0}</p>
