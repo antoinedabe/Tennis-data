@@ -115,13 +115,13 @@ class TennisAnalyzer:
                     combined_data.extend(dataset_matches)
                     successful_datasets.append(dataset_name)
                     print(
-                        f"✓ Loaded {len(dataset_matches)} matches from {dataset_name}"
+                        f"â Loaded {len(dataset_matches)} matches from {dataset_name}"
                     )
 
                 except Exception as e:
                     print(f"Error parsing {dataset_name}: {str(e)}")
             else:
-                print(f"✗ Failed to load {dataset_name}")
+                print(f"â Failed to load {dataset_name}")
 
         print(
             f"\nTotal matches loaded: {len(combined_data)} from {len(successful_datasets)} datasets"
@@ -310,7 +310,7 @@ class TennisAnalyzer:
                         player2_points += 1
                         game_stats['aces']['player2'] += 1
                         stats['aces']['player2'] += 1
-                    
+
                     current_score = self._calculate_tennis_score(
                         rally_length, point_server, current_score, player1_points, player2_points)
                 elif shot == 'D':  # Double fault - returner wins point
@@ -334,7 +334,7 @@ class TennisAnalyzer:
                         game_stats['errors']['player2'] += 1
                         stats['double_faults']['player2'] += 1
                         stats['errors']['player2'] += 1
-                    
+
                     rally_length += 1
                     current_score = self._calculate_tennis_score(
                         rally_length, 2 if point_server == 1 else 1, current_score, player1_points, player2_points)
@@ -356,13 +356,13 @@ class TennisAnalyzer:
                             last_shot_player = current_point[-1]['player'] if current_point else point_server
                             point_winner = last_shot_player
                             winner_code = 'S' if point_winner == point_server else 'R'
-                            
+
                             # Update points for regular rally end
                             if point_winner == 1:
                                 player1_points += 1
                             else:
                                 player2_points += 1
-                            
+
                             # Calculate tennis score after this point
                             current_score = self._calculate_tennis_score(
                                 rally_length, point_winner, current_score, player1_points, player2_points)
@@ -406,13 +406,13 @@ class TennisAnalyzer:
                 last_shot_player = current_point[-1]['player'] if current_point else point_server
                 point_winner = last_shot_player
                 winner_code = 'S' if point_winner == point_server else 'R'
-                
+
                 # Update points for unfinished point
                 if point_winner == 1:
                     player1_points += 1
                 else:
                     player2_points += 1
-                
+
                 current_score = self._calculate_tennis_score(
                     rally_length, point_winner, current_score, player1_points, player2_points)
 
@@ -430,14 +430,14 @@ class TennisAnalyzer:
                 game_stats['score_progression'].append(current_score.copy())
                 game_stats['rally_lengths'].append(rally_length)
                 stats['rally_lengths'].append(rally_length)
-            
+
             # Determine game winner
             if current_score.get('status', '').startswith('game_'):
                 game_stats['winner'] = 1 if current_score['status'] == 'game_p1' else 2
             else:
                 # If no clear winner, determine based on points
                 game_stats['winner'] = 1 if player1_points > player2_points else 2
-            
+
             game_stats['final_score'] = current_score.copy()
             stats['games'].append(game_stats)
 
@@ -535,6 +535,224 @@ class TennisAnalyzer:
         }
 
 
+
+
+# ===============================
+# Clean statistics engine (integrated)
+# ===============================
+class CleanStatsEngine:
+    def analyze(self, combined_data, match_id: int = 0):
+        if not combined_data or match_id >= len(combined_data):
+            return None
+        target = combined_data[match_id]
+        pbp = (target.get('pbp') or "").strip()
+
+        stats = {
+            'aces': {'player1':0,'player2':0},
+            'double_faults': {'player1':0,'player2':0},
+            'errors': {'player1':0,'player2':0},
+            'rally_lengths': [],
+            'games': [],
+            'points_won': {'player1':0,'player2':0},
+            'service_points_won': {'player1':0,'player2':0},
+            'return_points_won': {'player1':0,'player2':0},
+            'breaks': {
+                'player1_made':0,'player2_made':0,
+                'player1_bp_faced':0,'player2_bp_faced':0,
+                'player1_bp_saved':0,'player2_bp_saved':0,
+                'player1_bp_converted':0,'player2_bp_converted':0
+            },
+            'match_info': {
+                'date': target.get('date','Unknown'),
+                'tournament': target.get('tny_name','Unknown Tournament'),
+                'player1': target.get('server1','Player 1'),
+                'player2': target.get('server2','Player 2'),
+                'winner': target.get('winner',''),
+                'score': target.get('score','N/A'),
+                'duration': target.get('wh_minutes','N/A'),
+            }
+        }
+
+        if not pbp:
+            stats['summary'] = {
+                'total_aces':0,'total_errors':0,'total_double_faults':0,'total_games':0,
+                'avg_rally_length':0,'total_rallies':0,
+                'p1_points_won':0,'p2_points_won':0,
+                'p1_breaks_made':0,'p2_breaks_made':0,
+                'p1_bp_faced':0,'p2_bp_faced':0,'p1_bp_saved':0,'p2_bp_saved':0,
+                'p1_bp_converted':0,'p2_bp_converted':0,
+                'key_moment_game':None,'key_moment_point':None,'key_moment_desc':""
+            }
+            return stats
+
+        def tscore(p1,p2):
+            if p1>=3 and p2>=3:
+                if p1==p2: return "Deuce"
+                if p1==p2+1: return "Adv P1"
+                if p2==p1+1: return "Adv P2"
+            mp={0:"0",1:"15",2:"30",3:"40"}
+            return f"{mp.get(p1,'40')}-{mp.get(p2,'40')}"
+
+        def game_win(p1,p2):
+            if (p1>=4 or p2>=4) and abs(p1-p2)>=2:
+                return 1 if p1>p2 else 2
+            return None
+
+        games = [g for g in pbp.split(';') if g]
+        total_points_seen=0
+        total_points_overall = sum(len(g) for g in games) or 1
+
+        key_moment={'leverage':-1.0}
+
+        for gi,g in enumerate(games):
+            server = 1 if gi%2==0 else 2
+            p1=p2=0
+            game_obj={
+                'game_number':gi+1,'server':server,'game_info':[],'rally_lengths':[],
+                'aces':{'player1':0,'player2':0},
+                'double_faults':{'player1':0,'player2':0},
+                'errors':{'player1':0,'player2':0},
+                'score_progression':[]
+            }
+            current_point=[]; rally_len=0
+
+            def hitter(idx):
+                if server==1:
+                    return 1 if idx%2==0 else 2
+                else:
+                    return 2 if idx%2==0 else 1
+
+            for ch in g:
+                if ch in "SRFBLVNE":
+                    current_point.append(ch); rally_len+=1; continue
+                if ch in "ADWE":
+                    before = tscore(p1,p2)
+
+                    if ch=='A':
+                        win=server
+                        if server==1:
+                            stats['aces']['player1']+=1; game_obj['aces']['player1']+=1
+                        else:
+                            stats['aces']['player2']+=1; game_obj['aces']['player2']+=1
+                    elif ch=='D':
+                        win=2 if server==1 else 1
+                        if server==1:
+                            stats['double_faults']['player1']+=1; stats['errors']['player1']+=1
+                            game_obj['double_faults']['player1']+=1; game_obj['errors']['player1']+=1
+                        else:
+                            stats['double_faults']['player2']+=1; stats['errors']['player2']+=1
+                            game_obj['double_faults']['player2']+=1; game_obj['errors']['player2']+=1
+                    elif ch=='W':
+                        hit_idx=max(0,len(current_point)-1); w=hitter(hit_idx); win=w
+                    elif ch=='E':
+                        hit_idx=max(0,len(current_point)-1); h=hitter(hit_idx); win=2 if h==1 else 1
+                        if h==1:
+                            stats['errors']['player1']+=1; game_obj['errors']['player1']+=1
+                        else:
+                            stats['errors']['player2']+=1; game_obj['errors']['player2']+=1
+
+                    sp = p1 if server==1 else p2
+                    rp = p2 if server==1 else p1
+                    is_bp = (rp>=3 and (rp-sp)>=1)
+                    if is_bp:
+                        if server==1: stats['breaks']['player1_bp_faced']+=1
+                        else: stats['breaks']['player2_bp_faced']+=1
+
+                    if win==1: stats['points_won']['player1']+=1
+                    else: stats['points_won']['player2']+=1
+
+                    if win==server:
+                        if server==1: stats['service_points_won']['player1']+=1
+                        else: stats['service_points_won']['player2']+=1
+                    else:
+                        if server==1: stats['return_points_won']['player2']+=1
+                        else: stats['return_points_won']['player1']+=1
+
+                    if win==1: p1+=1
+                    else: p2+=1
+
+                    after = tscore(p1,p2)
+                    if rally_len>0:
+                        stats['rally_lengths'].append(rally_len); game_obj['rally_lengths'].append(rally_len)
+
+                    if is_bp:
+                        if win==server:
+                            if server==1: stats['breaks']['player1_bp_saved']+=1
+                            else: stats['breaks']['player2_bp_saved']+=1
+                        else:
+                            if win==1: stats['breaks']['player1_bp_converted']+=1
+                            else: stats['breaks']['player2_bp_converted']+=1
+
+                    total_points_seen+=1
+                    deuce = (p1>=3 and p2>=3 and abs(p1-p2)<=1)
+                    game_point = (p1>=3 and (p1-p2)>=1) or (p2>=3 and (p2-p1)>=1)
+                    time_w = total_points_seen/float(max(total_points_overall,1))
+                    lev = (1.0 if game_point else 0.0) + (0.8 if is_bp else 0.0) + (0.3 if deuce else 0.0)
+                    lev *= (0.6 + 0.4*time_w)
+                    if lev > key_moment.get('leverage',-1):
+                        key_moment={
+                            'game_index':gi,'point_number':len(game_obj['game_info'])+1,'server':server,'winner':win,
+                            'is_break_point':bool(is_bp),'was_game_point':bool(game_point),'deuce_phase':bool(deuce),'leverage':lev
+                        }
+
+                    game_obj['game_info'].append({
+                        'point_number':len(game_obj['game_info'])+1,'rally_length':rally_len,'winner':win,'server':server,
+                        'score_before':before,'score_after':after,'event':ch
+                    })
+                    game_obj['score_progression'].append({
+                        'player1': after.split('-')[0] if '-' in after else after,
+                        'player2': after.split('-')[1] if '-' in after else ''
+                    })
+                    current_point=[]; rally_len=0
+                else:
+                    continue
+
+            gw = game_win(p1,p2)
+            if gw is None: gw = 1 if p1>p2 else 2
+            game_obj['winner']=gw
+            stats['games'].append(game_obj)
+            if gw!=server:
+                if gw==1: stats['breaks']['player1_made']+=1
+                else: stats['breaks']['player2_made']+=1
+
+        tot_aces = stats['aces']['player1']+stats['aces']['player2']
+        tot_err = stats['errors']['player1']+stats['errors']['player2']
+        tot_df = stats['double_faults']['player1']+stats['double_faults']['player2']
+
+        if 'game_index' in key_moment:
+            nserv = stats['match_info']['player1'] if key_moment['server']==1 else stats['match_info']['player2']
+            nwin = stats['match_info']['player1'] if key_moment['winner']==1 else stats['match_info']['player2']
+            tags=[]
+            if key_moment.get('is_break_point'): tags.append('break point')
+            if key_moment.get('was_game_point'): tags.append('game point')
+            if key_moment.get('deuce_phase'): tags.append('deuce')
+            desc=f"Point {key_moment['point_number']} du jeu {key_moment['game_index']+1}: {nwin} gagne ({', '.join(tags) if tags else 'point important'}), serveur: {nserv}."
+        else:
+            desc=""
+        stats['key_moment']={**key_moment,'description':desc}
+
+        stats['summary']={
+            'total_aces': tot_aces,
+            'total_errors': tot_err,
+            'total_double_faults': tot_df,
+            'total_games': len(stats['games']),
+            'avg_rally_length': (sum(stats['rally_lengths'])/len(stats['rally_lengths'])) if stats['rally_lengths'] else 0,
+            'total_rallies': len(stats['rally_lengths']),
+            'p1_points_won': stats['points_won']['player1'],
+            'p2_points_won': stats['points_won']['player2'],
+            'p1_breaks_made': stats['breaks']['player1_made'],
+            'p2_breaks_made': stats['breaks']['player2_made'],
+            'p1_bp_faced': stats['breaks']['player1_bp_faced'],
+            'p2_bp_faced': stats['breaks']['player2_bp_faced'],
+            'p1_bp_saved': stats['breaks']['player1_bp_saved'],
+            'p2_bp_saved': stats['breaks']['player2_bp_saved'],
+            'p1_bp_converted': stats['breaks']['player1_bp_converted'],
+            'p2_bp_converted': stats['breaks']['player2_bp_converted'],
+            'key_moment_game': (stats['key_moment']['game_index']+1) if 'game_index' in stats['key_moment'] else None,
+            'key_moment_point': stats['key_moment'].get('point_number'),
+            'key_moment_desc': desc
+        }
+        return stats
 class TennisWebHandler(BaseHTTPRequestHandler):
 
     def __init__(self, *args, **kwargs):
@@ -550,6 +768,9 @@ class TennisWebHandler(BaseHTTPRequestHandler):
 
         elif path == '/matches':
             self.serve_match_list()
+
+        elif path.startswith('/download_stats'):
+            self.serve_download_stats(urllib.parse.urlparse(self.path))
 
         elif path.startswith('/analyze/') and '/' in path[9:]:
             # Format: /analyze/{match_id}/{game_id}
@@ -580,13 +801,99 @@ class TennisWebHandler(BaseHTTPRequestHandler):
 
     def serve_single_match_analysis(self, match_id):
         try:
-            data = self.analyzer.analyze_single_match(match_id)
+            combined_data, successful_datasets = self.analyzer.fetch_all_tennis_data()
+            data = CleanStatsEngine().analyze(combined_data, match_id)
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps(data).encode())
         except Exception as e:
             self.send_error_json(f"Error analyzing match: {str(e)}")
+
+
+def serve_download_stats(self, parsed_path):
+    try:
+        qs = urllib.parse.parse_qs(parsed_path.query or '')
+        match_id = int(qs.get('match_id', ['0'])[0])
+        combined_data, _ = self.analyzer.fetch_all_tennis_data()
+        data = CleanStatsEngine().analyze(combined_data, match_id)
+        if not data:
+            self.send_error_json("Match not found")
+            return
+
+        mi = data.get('match_info', {})
+        summ = data.get('summary', {})
+
+        header = [
+            'tournament','date','player1','player2','winner','score','duration',
+            'total_aces','total_errors','total_double_faults','total_games','avg_rally_length',
+            'p1_points_won','p2_points_won',
+            'p1_breaks_made','p2_breaks_made','p1_bp_faced','p2_bp_faced','p1_bp_saved','p2_bp_saved','p1_bp_converted','p2_bp_converted',
+            'key_moment_game','key_moment_point','key_moment_desc'
+        ]
+
+        def g(d,k,default=''): return d.get(k, default) if isinstance(d, dict) else default
+
+        row = [
+            g(mi,'tournament'), g(mi,'date'), g(mi,'player1'), g(mi,'player2'), g(mi,'winner'), g(mi,'score'), g(mi,'duration','N/A'),
+            g(summ,'total_aces',0), g(summ,'total_errors',0), g(summ,'total_double_faults',0), g(summ,'total_games',0), g(summ,'avg_rally_length',0),
+            g(summ,'p1_points_won',0), g(summ,'p2_points_won',0),
+            g(summ,'p1_breaks_made',0), g(summ,'p2_breaks_made',0), g(summ,'p1_bp_faced',0), g(summ,'p2_bp_faced',0), g(summ,'p1_bp_saved',0), g(summ,'p2_bp_saved',0), g(summ,'p1_bp_converted',0), g(summ,'p2_bp_converted',0),
+            g(summ,'key_moment_game',''), g(summ,'key_moment_point',''), g(summ,'key_moment_desc','')
+        ]
+
+        import io, csv as _csv
+        buf = io.StringIO(); w = _csv.writer(buf)
+        w.writerow(header); w.writerow(row)
+        data_bytes = buf.getvalue().encode('utf-8')
+
+        self.send_response(200)
+        self.send_header('Content-Type','text/csv; charset=utf-8')
+        self.send_header('Content-Disposition', f'attachment; filename=match_{match_id}_stats.csv')
+        self.send_header('Content-Length', str(len(data_bytes)))
+        self.end_headers()
+        self.wfile.write(data_bytes)
+    except Exception as e:
+        self.send_error_json(f"Error exporting stats: {str(e)}")
+
+    def serve_download_stats(self, parsed_path):
+        try:
+            qs = urllib.parse.parse_qs(parsed_path.query or '')
+            match_id = int(qs.get('match_id', ['0'])[0])
+            combined_data, _ = self.analyzer.fetch_all_tennis_data()
+            data = CleanStatsEngine().analyze(combined_data, match_id)
+            if not data:
+                self.send_error_json("Match not found")
+                return
+            mi = data.get('match_info', {})
+            summ = data.get('summary', {})
+            header = [
+                'tournament','date','player1','player2','winner','score','duration',
+                'total_aces','total_errors','total_double_faults','total_games','avg_rally_length',
+                'p1_points_won','p2_points_won',
+                'p1_breaks_made','p2_breaks_made','p1_bp_faced','p2_bp_faced','p1_bp_saved','p2_bp_saved','p1_bp_converted','p2_bp_converted',
+                'key_moment_game','key_moment_point','key_moment_desc'
+            ]
+            def g(d,k,default=''): return d.get(k, default) if isinstance(d, dict) else default
+            row = [
+                g(mi,'tournament'), g(mi,'date'), g(mi,'player1'), g(mi,'player2'), g(mi,'winner'), g(mi,'score'), g(mi,'duration','N/A'),
+                g(summ,'total_aces',0), g(summ,'total_errors',0), g(summ,'total_double_faults',0), g(summ,'total_games',0), g(summ,'avg_rally_length',0),
+                g(summ,'p1_points_won',0), g(summ,'p2_points_won',0),
+                g(summ,'p1_breaks_made',0), g(summ,'p2_breaks_made',0), g(summ,'p1_bp_faced',0), g(summ,'p2_bp_faced',0), g(summ,'p1_bp_saved',0), g(summ,'p2_bp_saved',0), g(summ,'p1_bp_converted',0), g(summ,'p2_bp_converted',0),
+                g(summ,'key_moment_game',''), g(summ,'key_moment_point',''), g(summ,'key_moment_desc','')
+            ]
+            import io, csv as _csv
+            buf = io.StringIO(); w = _csv.writer(buf)
+            w.writerow(header); w.writerow(row)
+            data_bytes = buf.getvalue().encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type','text/csv; charset=utf-8')
+            self.send_header('Content-Disposition', f'attachment; filename=match_{match_id}_stats.csv')
+            self.send_header('Content-Length', str(len(data_bytes)))
+            self.end_headers()
+            self.wfile.write(data_bytes)
+        except Exception as e:
+            self.send_error_json(f"Error exporting stats: {str(e)}")
 
     def serve_html(self):
         html_content = """
@@ -1005,7 +1312,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             .player-comparison {
                 grid-template-columns: 1fr;
             }
-            
+
             .header h1 {
                 font-size: 2rem;
             }
@@ -1028,7 +1335,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎾 Tennis Match Analyzer test</h1>
+            <h1>ð¾ Tennis Match Analyzer test</h1>
             <p>Analyze point-by-point tennis match data with detailed statistics</p>
         </div>
 
@@ -1041,7 +1348,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 <button class="analyze-button" onclick="loadMatches()" id="load-matches-btn">
                     Load Tennis Matches
                 </button>
-                
+
                 <div id="matches-list" class="matches-list" style="display: none;">
                     <div class="matches-header">
                         <h3>Select a Match to Analyze:</h3>
@@ -1064,8 +1371,29 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 <div id="match-details" class="match-details">
                     <!-- Match details will be displayed here -->
                 </div>
-                
+
                 <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Points Won</h3>
+                        <p><span id="p1-name-inline"></span>: <strong id="p1-points-won">0</strong></p>
+                        <p><span id="p2-name-inline"></span>: <strong id="p2-points-won">0</strong></p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Breaks</h3>
+                        <p><span id="p1-name-inline-2"></span>: <strong id="p1-breaks-made">0</strong></p>
+                        <p><span id="p2-name-inline-2"></span>: <strong id="p2-breaks-made">0</strong></p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Break Points</h3>
+                        <p><span id="p1-name-inline-3"></span>: <strong id="p1-bp-saved">0</strong> saved / <span id="p1-bp-faced">0</span> faced</p>
+                        <p><span id="p2-name-inline-3"></span>: <strong id="p2-bp-saved">0</strong> saved / <span id="p2-bp-faced">0</span> faced</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Key Moment</h3>
+                        <p id="key-moment-desc">â</p>
+                        <button id="download-stats" class="analyze-button" style="margin-top:10px;">Download match stats (CSV)</button>
+                    </div>
+
                     <div class="stat-card">
                         <h3>Total Aces</h3>
                         <div class="stat-number" id="total-aces">-</div>
@@ -1116,7 +1444,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 <div id="game-details" class="game-details">
                     <!-- Game details will be displayed here -->
                 </div>
-                
+
                 <div id="points-section" class="points-section">
                     <h3>Point-by-Point Breakdown</h3>
                     <div id="points-container" class="points-container">
@@ -1160,7 +1488,7 @@ class TennisWebHandler(BaseHTTPRequestHandler):
                 matchesData = data.matches || data;
                 setupYearFilter(data.matches || data);
                 displayMatches(data.matches || data);
-                
+
                 // Show dataset information if available
                 if (data.datasets_loaded) {
                     const matchCountElement = document.getElementById('match-count');
@@ -1206,11 +1534,11 @@ class TennisWebHandler(BaseHTTPRequestHandler):
             });
 
             allYears = Array.from(years).sort().reverse(); // Most recent years first
-            
+
             const yearFilter = document.getElementById('year-filter');
             // Clear existing options except "All Years"
             yearFilter.innerHTML = '<option value="all">All Years</option>';
-            
+
             // Add year options
             allYears.forEach(year => {
                 const option = document.createElement('option');
@@ -1236,12 +1564,12 @@ async function filterMatchesByYear() {
         displayMatches(matchesData);
         updateMatchCount(matchesData.length);
     } catch (err) {
-        console.error(err);  // 🔍 pour voir l'erreur exacte dans la console
+        console.error(err);  // ð pour voir l'erreur exacte dans la console
         const container = document.getElementById('matches-container');
         container.innerHTML = `<p>Error loading filtered matches: ${err.message}</p>`;
     }
 }
-        
+
 
         function updateMatchCount(count) {
             const matchCount = document.getElementById('match-count');
@@ -1307,7 +1635,7 @@ async function filterMatchesByYear() {
 
                 document.getElementById('match-title').textContent = 
                     `${matchInfo.player1} vs ${matchInfo.player2}`;
-                
+
                 const matchDetails = document.getElementById('match-details');
                 matchDetails.innerHTML = `
                     <h4>${matchInfo.tournament}</h4>
@@ -1327,7 +1655,31 @@ async function filterMatchesByYear() {
                 // Update player names and stats
                 document.getElementById('player1-name').textContent = matchInfo.player1;
                 document.getElementById('player2-name').textContent = matchInfo.player2;
-                
+                // Inline names for new stat cards
+                document.getElementById('p1-name-inline').textContent = matchInfo.player1;
+                document.getElementById('p2-name-inline').textContent = matchInfo.player2;
+                document.getElementById('p1-name-inline-2').textContent = matchInfo.player1;
+                document.getElementById('p2-name-inline-2').textContent = matchInfo.player2;
+                document.getElementById('p1-name-inline-3').textContent = matchInfo.player1;
+                document.getElementById('p2-name-inline-3').textContent = matchInfo.player2;
+
+                // New stats from summary
+                const S = data.summary || {};
+                document.getElementById('p1-points-won').textContent = S.p1_points_won ?? data.points_won?.player1 ?? 0;
+                document.getElementById('p2-points-won').textContent = S.p2_points_won ?? data.points_won?.player2 ?? 0;
+                document.getElementById('p1-breaks-made').textContent = S.p1_breaks_made ?? data.breaks?.player1_made ?? 0;
+                document.getElementById('p2-breaks-made').textContent = S.p2_breaks_made ?? data.breaks?.player2_made ?? 0;
+                document.getElementById('p1-bp-faced').textContent = S.p1_bp_faced ?? data.breaks?.player1_bp_faced ?? 0;
+                document.getElementById('p2-bp-faced').textContent = S.p2_bp_faced ?? data.breaks?.player2_bp_faced ?? 0;
+                document.getElementById('p1-bp-saved').textContent = S.p1_bp_saved ?? data.breaks?.player1_bp_saved ?? 0;
+                document.getElementById('p2-bp-saved').textContent = S.p2_bp_saved ?? data.breaks?.player2_bp_saved ?? 0;
+                document.getElementById('key-moment-desc').textContent = S.key_moment_desc || (data.key_moment?.description ?? 'â');
+
+                // Wire download button
+                const dlBtn = document.getElementById('download-stats');
+                if (dlBtn) dlBtn.onclick = () => { window.location.href = `/download_stats?match_id=${matchId}`; };
+
+
                 document.getElementById('p1-aces').textContent = data.aces.player1;
                 document.getElementById('p1-double-faults').textContent = data.double_faults.player1;
                 document.getElementById('p1-errors').textContent = data.errors.player1;
@@ -1396,11 +1748,11 @@ async function filterMatchesByYear() {
 
                 document.getElementById('game-title').textContent = 
                     `Game ${data.game_number} - ${matchInfo.player1} vs ${matchInfo.player2}`;
-                
+
                 const gameDetails = document.getElementById('game-details');
                 const finalScore = data.final_score || {player1: "0", player2: "0"};
                 const gameWinner = data.winner === 1 ? matchInfo.player1 : matchInfo.player2;
-                
+
                 gameDetails.innerHTML = `
                     <h4>Game ${data.game_number} Details</h4>
                     <p><strong>Server:</strong> ${serverName}</p>
@@ -1446,7 +1798,7 @@ async function filterMatchesByYear() {
                 // Determine winner description
                 const winnerName = point.winner === 1 ? matchInfo.player1 : matchInfo.player2;
                 const serverName = point.server === 1 ? matchInfo.player1 : matchInfo.player2;
-                
+
                 let winnerDescription = '';
                 switch(point.winner_code) {
                     case 'A':
@@ -1489,7 +1841,7 @@ async function filterMatchesByYear() {
                             const playerName = shot.player === 1 ? matchInfo.player1 : matchInfo.player2;
                             const classes = ['shot-item', `player${shot.player}`];
                             if (shot.point_end) classes.push('point-end');
-                            
+
                             return `<span class="${classes.join(' ')}" title="${playerName}">
                                 ${shot.description}
                             </span>`;
@@ -1526,16 +1878,16 @@ async function filterMatchesByYear() {
             return None
 
         try:
-            # Extraire les paramètres de l'URL
+            # Extraire les paramÃ¨tres de l'URL
             query = urllib.parse.urlparse(self.path).query
             params = urllib.parse.parse_qs(query)
             year_filter = params.get('year', [None])[0]
 
-            # Récupération des données
+            # RÃ©cupÃ©ration des donnÃ©es
             combined_data, successful_datasets = self.analyzer.fetch_all_tennis_data(
             )
 
-            # Générer la liste des matchs pour le frontend
+            # GÃ©nÃ©rer la liste des matchs pour le frontend
             matches = self.analyzer.get_match_list(combined_data=combined_data)
 
             if year_filter:
@@ -1543,11 +1895,11 @@ async function filterMatchesByYear() {
                     m for m in matches
                     if extract_year(m.get('date')) == year_filter
                 ]
-                # Réaffecte des ID continus mais garde original_index pour analyse
+                # RÃ©affecte des ID continus mais garde original_index pour analyse
                 for new_id, match in enumerate(matches):
                     match['id'] = new_id
 
-            # Répondre en JSON
+            # RÃ©pondre en JSON
             response_data = {
                 'matches': matches,
                 'datasets_loaded': successful_datasets,
@@ -1569,8 +1921,7 @@ async function filterMatchesByYear() {
             )
 
             if combined_data:
-                stats = self.analyzer.analyze_single_match(
-                    combined_data=combined_data, match_id=match_id)
+                stats = CleanStatsEngine().analyze(combined_data=combined_data, match_id=match_id)
                 if stats and len(stats['games']) > game_id:
                     game_data = stats['games'][game_id]
                     game_data['match_info'] = stats['match_info']
