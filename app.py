@@ -1308,6 +1308,99 @@ def serve_download_stats(self, parsed_path):
             font-style: italic;
         }
 
+        .tournament-link {
+            color: #667eea;
+            text-decoration: underline;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .tournament-link:hover {
+            color: #764ba2;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 900px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            color: #333;
+            font-size: 1.3rem;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: #333;
+        }
+
+        .tournament-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+
+        .tournament-table th {
+            background: #667eea;
+            color: white;
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .tournament-table th:first-child { border-radius: 6px 0 0 0; }
+        .tournament-table th:last-child  { border-radius: 0 6px 0 0; }
+
+        .tournament-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+            color: #333;
+        }
+
+        .tournament-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .tournament-table tbody tr:hover td {
+            background: #f0f4ff;
+            cursor: pointer;
+        }
+
         @media (max-width: 768px) {
             .player-comparison {
                 grid-template-columns: 1fr;
@@ -1461,6 +1554,17 @@ def serve_download_stats(self, parsed_path):
         </div>
     </div>
 
+    <!-- Tournament modal -->
+    <div id="tournament-modal" class="modal-overlay" style="display:none;" onclick="closeTournamentModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modal-title">Tournament Matches</h3>
+                <button class="modal-close" onclick="closeTournamentModal()" aria-label="Close">&times;</button>
+            </div>
+            <div id="tournament-table-container"></div>
+        </div>
+    </div>
+
     <script>
         let matchesData = [];
         let allYears = [];
@@ -1585,22 +1689,93 @@ async function filterMatchesByYear() {
                 matchDiv.className = 'match-item';
                 matchDiv.onclick = () => analyzeMatch(match.id);
 
-                const winner = match.winner === '1' ? match.player1 : 
+                const winner = match.winner === '1' ? match.player1 :
                               match.winner === '2' ? match.player2 : 'Unknown';
+
+                const tournamentSpan = document.createElement('span');
+                tournamentSpan.className = 'tournament-link';
+                tournamentSpan.textContent = match.tournament;
+                tournamentSpan.addEventListener('click', e => {
+                    e.stopPropagation();
+                    showTournamentMatches(match.tournament);
+                });
+
+                const detailsDiv = document.createElement('div');
+                detailsDiv.className = 'match-details-info';
+                detailsDiv.appendChild(tournamentSpan);
+                detailsDiv.insertAdjacentHTML('beforeend',
+                    ` | Score: ${match.score} | Winner: <span class="winner-indicator">${winner}</span>` +
+                    (match.duration !== 'N/A' ? ` | Duration: ${match.duration} min` : '')
+                );
 
                 matchDiv.innerHTML = `
                     <div class="match-header">
                         <div class="match-players">${match.player1} vs ${match.player2}</div>
                         <div class="match-date">${match.date}</div>
                     </div>
-                    <div class="match-details-info">
-                        ${match.tournament} | Score: ${match.score} | Winner: <span class="winner-indicator">${winner}</span>
-                        ${match.duration !== 'N/A' ? ` | Duration: ${match.duration} min` : ''}
-                    </div>
                 `;
+                matchDiv.appendChild(detailsDiv);
 
                 container.appendChild(matchDiv);
             });
+        }
+
+        function showTournamentMatches(tournamentName) {
+            const tournamentMatches = matchesData.filter(m => m.tournament === tournamentName);
+
+            document.getElementById('modal-title').textContent = tournamentName;
+
+            const container = document.getElementById('tournament-table-container');
+
+            if (tournamentMatches.length === 0) {
+                container.innerHTML = '<p style="color:#666;">No matches found for this tournament.</p>';
+            } else {
+                const table = document.createElement('table');
+                table.className = 'tournament-table';
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Players</th>
+                            <th>Score</th>
+                            <th>Winner</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                `;
+                const tbody = table.querySelector('tbody');
+
+                tournamentMatches.forEach(match => {
+                    const winner = match.winner === '1' ? match.player1 :
+                                   match.winner === '2' ? match.player2 : 'Unknown';
+                    const tr = document.createElement('tr');
+                    tr.title = 'Click to analyse this match';
+                    tr.addEventListener('click', () => {
+                        closeTournamentModal();
+                        analyzeMatch(match.id);
+                    });
+
+                    const durationCell = match.duration !== 'N/A' ? match.duration + ' min' : '-';
+                    tr.innerHTML = `
+                        <td>${match.date}</td>
+                        <td>${match.player1} vs ${match.player2}</td>
+                        <td>${match.score}</td>
+                        <td class="winner-indicator">${winner}</td>
+                        <td>${durationCell}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+                container.innerHTML = `<p style="color:#666; margin-bottom:12px;">${tournamentMatches.length} match(es)</p>`;
+                container.appendChild(table);
+            }
+
+            document.getElementById('tournament-modal').style.display = 'flex';
+        }
+
+        function closeTournamentModal() {
+            document.getElementById('tournament-modal').style.display = 'none';
         }
 
         let currentMatchData = null;
