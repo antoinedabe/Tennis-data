@@ -902,7 +902,10 @@ def serve_download_stats(self, parsed_path):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tennis Match Analyzer</title>
+    <title>Tennis Data</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -930,9 +933,11 @@ def serve_download_stats(self, parsed_path):
         }
 
         .header h1 {
-            font-size: 2.5rem;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 4rem;
+            letter-spacing: 0.12em;
             margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            text-shadow: 3px 3px 8px rgba(0,0,0,0.35);
         }
 
         .header p {
@@ -1428,7 +1433,7 @@ def serve_download_stats(self, parsed_path):
 <body>
     <div class="container">
         <div class="header">
-            <h1>ð¾ Tennis Match Analyzer test</h1>
+                 <h1>TENNIS DATA</h1>
             <p>Analyze point-by-point tennis match data with detailed statistics</p>
         </div>
 
